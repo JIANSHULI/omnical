@@ -5,12 +5,13 @@ import sys,glob
 NCHAN = 203
 NPRM = 349 # 2 * nants + nubls
 NANT = 61 # because 19,37,50 are excluded
-time_dir = '~/psa_live/forlstbinning_omnical_2/'
+time_dir = '/data4/paper/2012EoR/psa_live/forlstbinning_omnical_2/'
 
 for omnical_file in sys.argv[1:]:
     #get times for the files.
     chunk = omnical_file.split('_')[2]
-    time_files = glob.glob(time_dir + 'zen*%s*O'%chunk)
+    time_files = glob.glob(time_dir + '%s*_jds.txt'%str(chunk))
+    print time_files
     pol = omnical_file.split('.')[-2].split('_')[-2][0]
     d = n.fromfile(omnical_file, dtype=n.float32)
     print omnical_file, d.size
@@ -41,5 +42,6 @@ for omnical_file in sys.argv[1:]:
         st = st + ntpuv
 
         tfile = tfile.split('/')[-1]
-        nametstamp = '_'.join( omnical_file.split('_')[0:2] + tfile.split('_')[0] + omnical_file.split('_')[3:] )
-        n.savez(omnical_file+'.npz', **d_npz)
+        namestamp = '_'.join( omnical_file.split('_')[0:2] + tfile.split('_')[0:1] + omnical_file.split('_')[3:] )
+        #n.savez(omnical_file+'.npz', **d_npz)
+        n.savez(namestamp +'.npz', **d_npz)
