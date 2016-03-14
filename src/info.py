@@ -188,6 +188,11 @@ class FirstCalRedundantInfo(_O.RedundantInfo):
     'ublindex', (nBaseline,) bl2d index for each bl contributing to each ubl
     'bl1dmatrix', (nAntenna,nAntenna) for each i,j antenna pair, the bl2d index of that bl
     'degenM', (nAntenna+nUBL,nAntenna) matrix projecting out degenerate cal params
+    'bl_pairs', (nblpairs) list of all the pairs of baselines for first cal. list of tuple pairs.
+    'nblpairs', number of baseline pairs
+    'blpair2d', (nblpairs,4) indexes for antennas in each baseline pair in bl_pairs
+    'A', (nblpairs, nAntenna) matrix containing delay phase equations
+     
     ------------------------------------------------------------------------
     'nUBL', number of unique bls; XXX legacy only
     'subsetbl', (nBaseline,) for each bl in bl2d, the index in totalVisibilityId; XXX legacy only
@@ -233,12 +238,12 @@ class FirstCalRedundantInfo(_O.RedundantInfo):
             for x,ant in enumerate(self.subsetant): self._ant2ind[ant] = x
             return self._ant2ind[i]
     def bl_index(self,bl):
+        '''Gets the baseline index from bl_order for a given baseline, bl'''
         try: return self._bl2ind[bl]
         except(AttributeError):
             self._bl2ind = {}
             for x,b in enumerate(self.bl_order()): self._bl2ind[b] = x
-            return _bl2ind
-        
+            return self._bl2ind[bl]
     def init_from_reds(self, reds, antpos):
         '''Initialize RedundantInfo from a list where each entry is a group of redundant baselines.
         Each baseline is a (i,j) tuple, where i,j are antenna indices.  To ensure baselines are
@@ -264,11 +269,16 @@ class FirstCalRedundantInfo(_O.RedundantInfo):
         self.bl1dmatrix = bl1dmatrix
         self.blperant = np.array([ants[a] for a in sorted(ants.keys())], dtype=int)
         self.bl_pairs = [(bl1,bl2) for ublgp in reds for i,bl1 in enumerate(ublgp) for bl2 in ublgp[i+1:]]
-        self.nblpairs = len(bl_pairs)
+        self.nblpairs = len(self.bl_pairs)
         self.blpair2d = np.array([(self.ant_index(i),self.ant_index(j),self.ant_index(k),self.ant_index(l)) for i,j,k,l in np.array(self.bl_pairs).reshape(self.nblpairs,-1)])
-        A = n.zeros((self.nblpairs,self.nAntenna))
+        A = np.zeros((self.nblpairs,self.nAntenna))
+        #XXX is this the right formulization?
         for n, (i,j,k,l) in enumerate(self.blpair2d):
-            A[i],A[j],A[k],A[l] = 1,1,1,1 #XXX
+            A[n,i] += 1
+            A[n,j] += -1
+            A[n,k] += -1
+            A[n,l] += 1
+        self.A = A
         # XXX nothing up to this point requires antloc; in principle, degenM can be deduced
         # from reds alone, removing need for antpos.  So that'd be nice, someday
         self.antloc = antpos.take(self.subsetant, axis=0).astype(np.float32)
@@ -294,6 +304,7 @@ class FirstCalRedundantInfo(_O.RedundantInfo):
         for i,ant in enumerate(self.subsetant): antpos[ant] = self.antloc[i]
         return antpos
     def get_delay(self,d1,d2,fqs):
+        '''Get delay of a pair of baselines. d?.shape=(ntimes,len(fqs)'''
         return red.redundant_bl_cal_simple(d1,d2,fqs)
     def get_bl_pairs(self):
         bl_pairs = []
@@ -302,6 +313,24 @@ class FirstCalRedundantInfo(_O.RedundantInfo):
                 for bl2 in ublgp[i+1:]:
                     bl_pairs.append((bl1,bl2))
         return bl_pairs
+    def make_measurement_matrix(self,dd,fqs):
+        '''Make the measurement matrix of all the phases between 
+           redundant baseline pairs'''
+        _M = np.zeros(self.nblpairs)
+        data = self.order_data(dd)
+        for n,(bl1,bl2) in enumerate(self.bl_pairs):
+            d1 = data[:,:,self.bl_index(bl1)]
+            d2 = data[:,:,self.bl_index(bl2)]
+            _M[n] = self.get_delay(d1,d2,fqs)
+        self.M = _M
+    def make_noise_matrix(self):
+        '''for now this is just the identity'''
+        self.N = n.identity(self.nblpairs)
+#    def get_calibrations(self):
+                
+    
+        
+        
     
                 
             
