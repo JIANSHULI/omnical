@@ -1,6 +1,5 @@
 import _omnical as _O
 import numpy as np, numpy.linalg as la
-import capo.red as red
 import warnings
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore",category=DeprecationWarning)
@@ -92,30 +91,33 @@ class RedundantInfo(_O.RedundantInfo):
             self._ant2ind = {}
             for x,ant in enumerate(self.subsetant): self._ant2ind[ant] = x
             return self._ant2ind[i]
-    def init_from_reds(self, reds, antpos):
-        '''Initialize RedundantInfo from a list where each entry is a group of redundant baselines.
-        Each baseline is a (i,j) tuple, where i,j are antenna indices.  To ensure baselines are
-        oriented to be redundant, it may be necessary to have i > j.  If this is the case, then
-        when calibrating visibilities listed as j,i data will have to be conjugated.'''
-        reds = [[(int(i),int(j)) for i,j in gp] for gp in reds]
+    def init_same(self,reds):
         ants = {}
         for ubl_gp in reds:
             for (i,j) in ubl_gp:
                 ants[i] = ants.get(i,0) + 1
                 ants[j] = ants.get(j,0) + 1
         self.subsetant = np.array(ants.keys(), dtype=np.int32)
-        self.nAntenna = self.subsetant.size
-        nUBL = len(reds)
         bl2d = np.array([(self.ant_index(i),self.ant_index(j),u) for u,ubl_gp in enumerate(reds) for i,j in ubl_gp], dtype=np.int32)
         self.bl2d = bl2d[:,:2]
-        self.nBaseline = bl2d.shape[0]
         self.bltoubl = bl2d[:,2]
+        self.blperant = np.array([ants[a] for a in sorted(ants.keys())], dtype=int)
+        
+    def init_from_reds(self, reds, antpos):
+        '''Initialize RedundantInfo from a list where each entry is a group of redundant baselines.
+        Each baseline is a (i,j) tuple, where i,j are antenna indices.  To ensure baselines are
+        oriented to be redundant, it may be necessary to have i > j.  If this is the case, then
+        when calibrating visibilities listed as j,i data will have to be conjugated.'''
+        reds = [[(int(i),int(j)) for i,j in gp] for gp in reds]
+        self.init_same(reds)
+        self.nAntenna = self.subsetant.size
+        nUBL = len(reds)
+        self.nBaseline = self.bl2d.shape[0]
         self.ublcount = np.array([len(ubl_gp) for ubl_gp in reds], dtype=np.int32)
         self.ublindex = np.arange(self.nBaseline, dtype=np.int32)
         bl1dmatrix = (2**31-1) * np.ones((self.nAntenna,self.nAntenna),dtype=np.int32)
         for n,(i,j) in enumerate(self.bl2d): bl1dmatrix[i,j], bl1dmatrix[j,i] = n,n
         self.bl1dmatrix = bl1dmatrix
-        self.blperant = np.array([ants[a] for a in sorted(ants.keys())], dtype=int)
         #A: A matrix for logcal amplitude
         A,B = np.zeros((self.nBaseline,self.nAntenna+nUBL)), np.zeros((self.nBaseline,self.nAntenna+nUBL))
         for n,(i,j) in enumerate(self.bl2d):
@@ -176,7 +178,7 @@ class RedundantInfo(_O.RedundantInfo):
         return xyA, xyB, yxA, yxB
 
 
-class FirstCalRedundantInfo(_O.RedundantInfo):
+class FirstCalRedundantInfo(RedundantInfo):
     '''Metadata used by _omnical.redcal which is passed into C++ routines.  Fields are as follows:
     'nAntenna', number of usable ants (not total number)
     'nBaseline', number of bls, matches first dim of bltoubl/bl2d, now python only
@@ -200,43 +202,9 @@ class FirstCalRedundantInfo(_O.RedundantInfo):
     'reversed', for each bl in crossindex, -1 if flipped wrt corresponding ubl, otherwise 1; XXX legacy only
     'crossindex', indices in bl2d in totVisibilityId; XXX legacy only
     'totalVisibilityId', (nBaselines, 2) i,j for every bl; defines data order into omnical; XXX legacy only'''
-    def __init__(self, filename=None):
+    def __init__(self):
         _O.RedundantInfo.__init__(self)
-        if filename: self.from_npz(filename)
-    def __getattribute__(self, key):
-        return _O.RedundantInfo.__getattribute__(self, key)
-    def __setattr__(self, key, val):
-        return _O.RedundantInfo.__setattr__(self, key, val)
-    def __getitem__(self,k): return self.__getattribute__(k)
-    def __setitem__(self,k,val): return self.__setattr__(k,val)
-    def order_data(self, dd):
-        '''Create a data array ordered for use in _omnical.redcal.  'dd' is
-        a dict whose keys are (i,j) antenna tuples; antennas i,j should be ordered to reflect
-        the conjugation convention of the provided data.  'dd' values are 2D arrays
-        of (time,freq) data.''' # XXX does time/freq ordering matter.  should data be 2D instead?
-        return np.array([dd[bl] if dd.has_key(bl) else dd[bl[::-1]].conj()
-            for bl in self.bl_order()]).transpose((1,2,0))
-    def bl_order(self):
-        '''Return (i,j) baseline tuples in the order that they should appear in data.  Antenna indicies
-        are in real-world order (as opposed to the internal ordering used in subsetant).'''
-        return [(self.subsetant[i],self.subsetant[j]) for (i,j) in self.bl2d]
-    def to_npz(self, filename):
-        '''Write enough to a numpy npz file to enable RedundantInfo to be reconstructed.'''
-        reds = self.get_reds()
-        antpos = self.get_antpos()
-        # XXX how expensive is constructing At,Bt, AtAi, BtBi?  Do we need to store them?
-        np.savez(filename, reds=reds, antpos=antpos)
-    def from_npz(self, filename):
-        '''Initialize RedundantInfo from a numpy npz file written by 'to_npz'.'''
-        npz = np.load(filename)
-        # XXX how expensive is constructing At,Bt, AtAi, BtBi?  Do we need to store them?
-        self.init_from_reds(npz['reds'], npz['antpos'])
-    def ant_index(self, i):
-        try: return self._ant2ind[i]
-        except(AttributeError):
-            self._ant2ind = {}
-            for x,ant in enumerate(self.subsetant): self._ant2ind[ant] = x
-            return self._ant2ind[i]
+        #Dont want to inherent from npz file...yet
     def bl_index(self,bl):
         '''Gets the baseline index from bl_order for a given baseline, bl'''
         try: return self._bl2ind[bl]
@@ -244,97 +212,55 @@ class FirstCalRedundantInfo(_O.RedundantInfo):
             self._bl2ind = {}
             for x,b in enumerate(self.bl_order()): self._bl2ind[b] = x
             return self._bl2ind[bl]
+    def blpair_index(self,blpair):
+        try: return self._blpair2ind[blpair]
+        except:
+            self._blpair2ind = {}
+            for x,bp in enumerate(self.bl_pairs): self._blpair2ind[bp] = x
+            return self._blpair2ind[bp]
+    def blpair2antind(self,blpair):
+        try: return self._blpair2antind[blpair]
+        except: 
+            self._blpair2antind = {}
+            for bp in self.bl_pairs: self._blpair2antind[bp] = map(self.ant_index,np.array(bp).flatten())
+            return self._blpair2antind[blpair]
     def init_from_reds(self, reds, antpos):
         '''Initialize RedundantInfo from a list where each entry is a group of redundant baselines.
         Each baseline is a (i,j) tuple, where i,j are antenna indices.  To ensure baselines are
         oriented to be redundant, it may be necessary to have i > j.  If this is the case, then
         when calibrating visibilities listed as j,i data will have to be conjugated.'''
-        reds = [[(int(i),int(j)) for i,j in gp] for gp in reds]
-        ants = {}
-        for ubl_gp in reds:
-            for (i,j) in ubl_gp:
-                ants[i] = ants.get(i,0) + 1
-                ants[j] = ants.get(j,0) + 1
-        self.subsetant = np.array(ants.keys(), dtype=np.int32)
-        self.nAntenna = self.subsetant.size
-        nUBL = len(reds)
-        bl2d = np.array([(self.ant_index(i),self.ant_index(j),u) for u,ubl_gp in enumerate(reds) for i,j in ubl_gp], dtype=np.int32)
-        self.bl2d = bl2d[:,:2]
-        self.nBaseline = bl2d.shape[0]
-        self.bltoubl = bl2d[:,2]
-        self.ublcount = np.array([len(ubl_gp) for ubl_gp in reds], dtype=np.int32)
-        self.ublindex = np.arange(self.nBaseline, dtype=np.int32)
-        bl1dmatrix = (2**31-1) * np.ones((self.nAntenna,self.nAntenna),dtype=np.int32)
-        for n,(i,j) in enumerate(self.bl2d): bl1dmatrix[i,j], bl1dmatrix[j,i] = n,n
-        self.bl1dmatrix = bl1dmatrix
-        self.blperant = np.array([ants[a] for a in sorted(ants.keys())], dtype=int)
+        self.reds = [[(int(i),int(j)) for i,j in gp] for gp in reds]
+        self.init_same(self.reds)
+        #new stuff for first cal
         self.bl_pairs = [(bl1,bl2) for ublgp in reds for i,bl1 in enumerate(ublgp) for bl2 in ublgp[i+1:]]
-        self.nblpairs = len(self.bl_pairs)
-        self.blpair2d = np.array([(self.ant_index(i),self.ant_index(j),self.ant_index(k),self.ant_index(l)) for i,j,k,l in np.array(self.bl_pairs).reshape(self.nblpairs,-1)])
-        A = np.zeros((self.nblpairs,self.nAntenna))
-        #XXX is this the right formulization?
-        for n, (i,j,k,l) in enumerate(self.blpair2d):
+        A = np.zeros((len(self.bl_pairs),len(self.subsetant)))
+        print A.shape
+        for n, bp in enumerate(self.bl_pairs):
+            print bp
+            i,j,k,l = self.blpair2antind(bp)
             A[n,i] += 1
             A[n,j] += -1
             A[n,k] += -1
             A[n,l] += 1
         self.A = A
-        # XXX nothing up to this point requires antloc; in principle, degenM can be deduced
-        # from reds alone, removing need for antpos.  So that'd be nice, someday
-        self.antloc = antpos.take(self.subsetant, axis=0).astype(np.float32)
-        self.ubl = np.array([np.mean([antpos[j]-antpos[i] for i,j in ublgp],axis=0) for ublgp in reds], dtype=np.float32)
-        # XXX why are 1,0 appended to positions/ubls?
-        a = np.array([np.append(ai,1) for ai in self.antloc], dtype=np.float32)
-        d = np.array([np.append(ubli,0) for ubli in self.ubl], dtype=np.float32)
-        m1 = -a.dot(la.pinv(a.T.dot(a))).dot(a.T)
-        m2 = d.dot(la.pinv(a.T.dot(a))).dot(a.T)
-        self.degenM = np.append(m1,m2,axis=0)
+#Do I need this?
+#        # XXX nothing up to this point requires antloc; in principle, degenM can be deduced
+#        # from reds alone, removing need for antpos.  So that'd be nice, someday
+#        self.antloc = antpos.take(self.subsetant, axis=0).astype(np.float32)
+#        self.ubl = np.array([np.mean([antpos[j]-antpos[i] for i,j in ublgp],axis=0) for ublgp in reds], dtype=np.float32)
+#        # XXX why are 1,0 appended to positions/ubls?
+#        a = np.array([np.append(ai,1) for ai in self.antloc], dtype=np.float32)
+#        d = np.array([np.append(ubli,0) for ubli in self.ubl], dtype=np.float32)
+#        m1 = -a.dot(la.pinv(a.T.dot(a))).dot(a.T)
+#        m2 = d.dot(la.pinv(a.T.dot(a))).dot(a.T)
+#        self.degenM = np.append(m1,m2,axis=0)
     def get_reds(self):
-        '''After initialization, return redundancies in the same format used in init_from_reds.  Requires that
-        ublcount, ublindex, subsetant, and bl2d be set.'''
-        reds = []
-        x = 0
-        for y in self.ublcount:
-            reds.append([(self.subsetant[self.bl2d[k,0]],self.subsetant[self.bl2d[k,1]]) for k in self.ublindex[x:x+y]])
-            x += y
-        return reds
-    def get_antpos(self):
-        '''After initialization, return antenna positions in the format used by init_from_reds.'''
-        antpos = np.zeros((self.subsetant.max()+1,3),dtype=np.float)
-        for i,ant in enumerate(self.subsetant): antpos[ant] = self.antloc[i]
-        return antpos
-    def get_delay(self,d1,d2,fqs):
-        '''Get delay of a pair of baselines. d?.shape=(ntimes,len(fqs)'''
-        return red.redundant_bl_cal_simple(d1,d2,fqs)
-    def get_bl_pairs(self):
-        bl_pairs = []
-        for ublgp in self.get_reds(): #loop of redundant groups
-            for i,bl1 in enumerate(ublgp):
-                for bl2 in ublgp[i+1:]:
-                    bl_pairs.append((bl1,bl2))
-        return bl_pairs
-    def make_measurement_matrix(self,dd,fqs):
-        '''Make the measurement matrix of all the phases between 
-           redundant baseline pairs'''
-        _M = np.zeros(self.nblpairs)
-        data = self.order_data(dd)
-        for n,(bl1,bl2) in enumerate(self.bl_pairs):
-            d1 = data[:,:,self.bl_index(bl1)]
-            d2 = data[:,:,self.bl_index(bl2)]
-            _M[n] = self.get_delay(d1,d2,fqs)
-        self.M = _M
-    def make_noise_matrix(self):
-        '''for now this is just the identity'''
-        self.N = n.identity(self.nblpairs)
-#    def get_calibrations(self):
-                
-    
-        
-        
-    
-                
-            
+        '''After initialization, return redundancies.'''
+        try: return self.reds
+        except(AttributeError):
+            print 'Initialize info class!'
 
+##########
 import os
 
 KEYS = [
