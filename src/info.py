@@ -217,7 +217,7 @@ class FirstCalRedundantInfo(RedundantInfo):
         except:
             self._blpair2ind = {}
             for x,bp in enumerate(self.bl_pairs): self._blpair2ind[bp] = x
-            return self._blpair2ind[bp]
+            return self._blpair2ind[blpair]
     def blpair2antind(self,blpair):
         try: return self._blpair2antind[blpair]
         except: 
@@ -234,9 +234,7 @@ class FirstCalRedundantInfo(RedundantInfo):
         #new stuff for first cal
         self.bl_pairs = [(bl1,bl2) for ublgp in reds for i,bl1 in enumerate(ublgp) for bl2 in ublgp[i+1:]]
         A = np.zeros((len(self.bl_pairs),len(self.subsetant)))
-        print A.shape
         for n, bp in enumerate(self.bl_pairs):
-            print bp
             i,j,k,l = self.blpair2antind(bp)
             A[n,i] += 1
             A[n,j] += -1
