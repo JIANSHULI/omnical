@@ -1,0 +1,3 @@
+# omni
+
+This is omnical.
