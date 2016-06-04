@@ -704,10 +704,15 @@ PyObject *redcal_wrap(PyObject *self, PyObject *args, PyObject *kwds) {//in plac
                 additivein_v[b][1] = ((float *) PyArray_GETPTR3(additivein,t,f,b))[1];
             }
 
+
             if (uselogcal) {
+
                 for (unsigned int n = 0; n < calpar_v.size(); n ++){
                     calpar_v[n] = ((float *) PyArray_GETPTR2(calpar, t, f))[n];
                 }
+                //Remove degen on firstcal solutions before we logcal.
+                removeDegen(&calpar_v, &(redinfo->info), &module);
+
                 logcaladd(
                     &data_v, //(vector<vector<float> > *) PyArray_GETPTR3(data,t,f,0),
                     &additivein_v, //(vector<vector<float> > *) PyArray_GETPTR3(additivein,t,f,0),
@@ -757,9 +762,7 @@ PyObject *redcal_wrap(PyObject *self, PyObject *args, PyObject *kwds) {//in plac
                 );
             }
             //if (removedegen) removeDegen((vector<float> *) PyArray_GETPTR3(calpar,t,f,0), &(redinfo->info), &module);
-            for (int i = 0; i < removedegen; i++){
-                removeDegen(&calpar_v, &(redinfo->info), &module);
-            }
+            if (removedegen) removeDegen(&calpar_v, &(redinfo->info), &module);
             // copy to output arrays
             for (int b = 0; b < nbls; b++) {
                 ((float *) PyArray_GETPTR3(additiveout,t,f,b))[0] = additiveout_v[b][0];
