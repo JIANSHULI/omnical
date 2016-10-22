@@ -711,7 +711,7 @@ PyObject *redcal_wrap(PyObject *self, PyObject *args, PyObject *kwds) {//in plac
                     calpar_v[n] = ((float *) PyArray_GETPTR2(calpar, t, f))[n];
                 }
                 //Remove degen on firstcal solutions before we logcal.
-                removeDegen(&calpar_v, &(redinfo->info), &module);
+                //removeDegen(&calpar_v, &(redinfo->info), &module);
 
                 logcaladd(
                     &data_v, //(vector<vector<float> > *) PyArray_GETPTR3(data,t,f,0),
