@@ -98,7 +98,7 @@ def unpack_calpar(info, calpar):
     return meta, gains, vis
 
 def redcal(data, info, xtalk=None, gains=None, vis=None,
-        removedegen=False, uselogcal=True, maxiter=50, conv=1e-3, stepsize=.3, computeUBLFit=True, trust_period=1):
+        removedegen=False, uselogcal=False, uselincal=False, maxiter=50, conv=1e-3, stepsize=.3, computeUBLFit=True, trust_period=1):
     '''Perform redundant calibration, parsing results into meta, gains, and vis dicts which are returned.  This
     function wraps _omnical.redcal to abstract away internal data ordering.  'data' is a dict of measured visibilities,
     indexed by baseline.  Initial guesses for xtalk, antenna gains,
@@ -109,9 +109,9 @@ def redcal(data, info, xtalk=None, gains=None, vis=None,
     if xtalk is None: xtalk = np.zeros_like(data) # crosstalk (aka "additivein/out") will be overwritten
     else: xtalk = info.order_data(xtalk)
     res = _O.redcal(data, calpar, info, xtalk,
-        removedegen=int(removedegen), uselogcal=int(uselogcal), maxiter=int(maxiter),
-        conv=float(conv), stepsize=float(stepsize), computeUBLFit=int(computeUBLFit),
-        trust_period=int(trust_period))
+        removedegen=int(removedegen), uselogcal=int(uselogcal), uselincal=int(uselincal),
+        maxiter=int(maxiter), conv=float(conv), stepsize=float(stepsize), 
+        computeUBLFit=int(computeUBLFit), trust_period=int(trust_period))
     meta, gains, vis = unpack_calpar(info, calpar)
     res = dict(zip(map(tuple,info.subsetant[info.bl2d]), res.transpose([2,0,1])))
     meta['res'] = res
