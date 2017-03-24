@@ -656,7 +656,7 @@ PyObject *redcal_wrap(PyObject *self, PyObject *args, PyObject *kwds) {//in plac
             &uselogcal, &removedegen, &maxiter, &stepsize, &conv, &computeUBLFit, &trust_period, &dummy))
         return NULL;
     // check shape and type of data
-    if (PyArray_NDIM(data) != 3 || PyArray_TYPE(data) != PyArray_CFLOAT) {
+    if (PyArray_NDIM(data) != 3 || PyArray_TYPE(data) != PyArray_CFLOAT) { // XXX make this work for complex128
         PyErr_Format(PyExc_ValueError, "data must be a (nint,nfreq,nbls) array of complex floats");
         return NULL;
     }

@@ -37,11 +37,13 @@ class TestMethods(unittest.TestCase):
     def test_unpack_calpar(self):
         calpar = np.zeros((2,3,Oc.calpar_size(self.info.nAntenna, len(self.info.ublcount))), dtype=np.float32)
         m,g,v = Oc.unpack_calpar(self.info,calpar)
+        antchisq = [k for k in m if k.startswith('chisq') and len(k) > len('chisq')]
         self.assertEqual(m['iter'].shape, (2,3))
-        self.assertEqual(m['antchisq'].shape[-1], self.info.nAntenna)
+        self.assertEqual(len(antchisq), self.info.nAntenna)
         self.assertTrue(np.all(m['iter'] == 0))
         self.assertTrue(np.all(m['chisq'] == 0))
-        self.assertTrue(np.all(m['antchisq'] == 0))
+        for k in antchisq:
+            self.assertTrue(np.all(m[k] == 0))
         self.assertEqual(len(g), 32)
         for i in xrange(32):
             self.assertTrue(np.all(g[i] == 1)) # 1 b/c 10**0 = 1
