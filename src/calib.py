@@ -110,7 +110,7 @@ def redcal(data, info, xtalk=None, gains=None, vis=None,
     else: xtalk = info.order_data(xtalk)
     res = _O.redcal(data, calpar, info, xtalk,
         removedegen=int(removedegen), uselogcal=int(uselogcal), uselincal=int(uselincal),
-        maxiter=int(maxiter), conv=float(conv), stepsize=float(stepsize), 
+        maxiter=int(maxiter), conv=float(conv), stepsize=float(stepsize),
         computeUBLFit=int(computeUBLFit), trust_period=int(trust_period))
     meta, gains, vis = unpack_calpar(info, calpar)
     res = dict(zip(map(tuple,info.subsetant[info.bl2d]), res.transpose([2,0,1])))
@@ -268,7 +268,7 @@ class RedundantCalibrator:
         self.Info.to_npz(filename)
     #def read_arrayinfo(self, arrayinfopath, verbose = False):
     #    return self.arrayinfo.read_arrayinfo(arrayinfopath,verbose=verbose) # XXX if works, clean up
-    def _redcal(self, data, additivein, nthread=None, verbose=False, uselogcal=0):
+    def _redcal(self, data, additivein, nthread=None, verbose=False, uselogcal=0, uselincal=0):
         '''for best performance, try setting nthread to larger than number of cores.'''
         #assert(data.ndim == 3 and data.shape[-1] == len(self.arrayinfo.totalVisibilityId))
         #assert(data.shape == additivein.shape) # XXX is this taken care of in wrapper?
@@ -280,15 +280,15 @@ class RedundantCalibrator:
         if nthread is None: nthread = min(mp.cpu_count() - 1, self.nFrequency)
         if nthread >= 2: return self._redcal_multithread(data, additivein, 0, nthread, verbose=verbose)
         return _O.redcal(data, self.rawCalpar, self.Info,
-            additivein, removedegen=int(self.removeDegeneracy), uselogcal=uselogcal,
+            additivein, removedegen=int(self.removeDegeneracy), uselogcal=uselogcal, uselincal=uselincal,
             maxiter=int(self.maxIteration), conv=float(self.convergePercent), stepsize=float(self.stepSize),
             computeUBLFit=int(self.computeUBLFit), trust_period=self.trust_period)
     def lincal(self, data, additivein, nthread=None, verbose=False):
         '''XXX DOCSTRING'''
-        return self._redcal(data, additivein, nthread=nthread, verbose=verbose, uselogcal=0)
+        return self._redcal(data, additivein, nthread=nthread, verbose=verbose, uselogcal=0, uselincal=1)
     def logcal(self, data, additivein, nthread=None, verbose=False):
         '''XXX DOCSTRING'''
-        return self._redcal(data, additivein, nthread=nthread, verbose=verbose, uselogcal=1)
+        return self._redcal(data, additivein, nthread=nthread, verbose=verbose, uselogcal=1, uselincal=0)
     def _redcal_multithread(self, data, additivein, uselogcal, nthread, verbose = False):
         '''XXX DOCSTRING'''
         nthread = min(nthread, self.nFrequency)
@@ -1361,4 +1361,3 @@ def deconvolve_spectra2(spectra, window, band_limit, var=None, correction_weight
     deconv_fdata = (mmi.dot(m.transpose().conjugate()) * Ni).dot(spectra*mult_window)
     model_fdata = m.dot(deconv_fdata)
     return deconv_fdata, np.linalg.norm(model_fdata-spectra*mult_window, axis = 0), model_fdata-spectra*mult_window, mmi
-
