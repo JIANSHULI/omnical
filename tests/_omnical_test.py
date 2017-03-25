@@ -24,7 +24,7 @@ class TestMethods(unittest.TestCase):
         data = np.ones((10,20,32*33/2), dtype=np.complex64)
         additivein = np.zeros_like(data)
         calpar = np.zeros((10,20,self.calpar_size),dtype='float32')
-        additiveout = _O.redcal(data, calpar, self.i, additivein)
+        additiveout = _O.redcal(data, calpar, self.i, additivein, uselogcal=True, removedegen=False, uselincal=False)
         self.assertTrue(np.all(calpar[:,:,:self.start_ubl] == 0))
         self.assertTrue(np.all(calpar[:,:,self.start_ubl:self.end_ubl:2] == 1))
         self.assertTrue(np.all(calpar[:,:,self.start_ubl+1:self.end_ubl+1:2] == 0))
@@ -35,7 +35,7 @@ class TestMethods(unittest.TestCase):
         additivein = np.zeros_like(data)
         additiveout = np.zeros_like(data) + 1 + 1j
         calpar = np.zeros((10,20,self.calpar_size),dtype='float32')
-        _O.redcal(data, calpar, self.i, additivein, additiveout)
+        _O.redcal(data, calpar, self.i, additivein, additiveout, uselogcal=True, removedegen=False, uselincal=False)
         self.assertTrue(np.all(calpar[:,:,:self.start_ubl] == 0))
         self.assertTrue(np.all(calpar[:,:,self.start_ubl:self.end_ubl:2] == 1))
         self.assertTrue(np.all(calpar[:,:,self.start_ubl+1:self.end_ubl+1:2] == 0))
@@ -45,7 +45,7 @@ class TestMethods(unittest.TestCase):
         data = np.ones((10,20,32*33/2), dtype=np.complex64)
         additivein = np.zeros_like(data)
         calpar = np.zeros((10,20,self.calpar_size),dtype='float32')
-        additiveout = _O.redcal(data, calpar, self.i, additivein, uselogcal=0)
+        additiveout = _O.redcal(data, calpar, self.i, additivein, uselincal=True, uselogcal=False, removedegen=False)
         #print calpar[0,0,:3+2*self.i.nAntenna]
         self.assertTrue(np.all(calpar[:,:,:2] == 0))
         np.testing.assert_almost_equal(calpar[:,:,2], np.zeros((10,20)), 10)
@@ -61,7 +61,7 @@ class TestMethods(unittest.TestCase):
         additivein = np.zeros_like(data)
         additiveout = np.zeros_like(data) + 1 + 1j
         calpar = np.zeros((10,20,self.calpar_size),dtype='float32')
-        _O.redcal(data, calpar, self.i, additivein, additiveout, uselogcal=0)
+        _O.redcal(data, calpar, self.i, additivein, additiveout, uselincal=True, uselogcal=False, removedegen=False)
         #print calpar[0,0,:3+2*self.i.nAntenna]
         self.assertTrue(np.all(calpar[:,:,:2] == 0))
         np.testing.assert_almost_equal(calpar[:,:,2], np.zeros((10,20)), 10)
