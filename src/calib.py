@@ -8,6 +8,7 @@ import struct
 import numpy as np
 import os, sys
 import _omnical as _O
+from copy import deepcopy
 from info import RedundantInfo
 from arrayinfo import ArrayInfo, ArrayInfoLegacy
 import warnings
@@ -120,6 +121,93 @@ def redcal(data, info, xtalk=None, gains=None, vis=None,
 # TODO: wrap _O._redcal to return calpar parsed up sensibly
 # considerations: _redcal starts with calpar as a starting place.  Do we need the ability to go
 # from parsed solutions back to calpar?  if so, might want an object that holds calpar and parses accordingly
+
+
+def create_unitgains(data):
+    '''Create unity gains for all antpols and antennas that appear in data (in format passed to logcal/lincal)'''
+    unitgains = {}
+    ants = list(set([ant for bl in data.keys() for ant in bl]))
+    for ai in ants:
+        unitgains[ai] = np.ones_like(data.values()[0], dtype=np.complex64)
+    return unitgains
+
+
+def logcal(data, info, gainstart=None, xtalk=None, maxiter=50, conv=1e-3, stepsize=.3,
+           computeUBLFit=True, trust_period=1):
+    '''Perform logcal. Calls redcal() function with logcal=True.
+       Before passing into redcal, divides out by gainstart, and before
+       returning solutions, multipy in gainstart.'''
+    datafc = deepcopy(data)
+
+    unitgains = create_unitgains(data)
+    if gainstart is None: gainstart = deepcopy(unitgains)
+
+    for ai, aj in datafc.keys():
+        if ai in info.subsetant and aj in info.subsetant:
+                datafc[ai, aj] /= (gainstart[ai] * np.conj(gainstart[aj]))
+
+    m, g, v = redcal(datafc, info, gains=unitgains, uselogcal=True, xtalk=xtalk,
+                     conv=conv, stepsize=stepsize, computeUBLFit=computeUBLFit,
+                     trust_period=trust_period, maxiter=maxiter)
+
+    for ai in g.keys():
+        g[ai] *= gainstart[ai]
+
+    return m, g, v
+
+
+def lincal(data, info, gainstart, visstart, xtalk=None, maxiter=50, conv=1e-3,
+           stepsize=.3, computeUBLFit=True, trust_period=1):
+    '''Perform lincal. Calls redcal() function with lincal=True.
+       Before passing into redcal, divides out by gainstart, and before
+       returning solutions, multipy in gainstart. In order to correctly calculate
+       chisq's, we run redcal once more with the final solutions as input and maxiter=0.'''
+    datafc = deepcopy(data)
+    for ai, aj in datafc.keys():
+        if ai in info.subsetant and aj in info.subsetant:
+            datafc[ai, aj] /= (gainstart[ai] * np.conj(gainstart[aj]))
+
+    unitgains = create_unitgains(data)
+    m, g, v = redcal(datafc, info, gains=unitgains, vis=visstart, uselincal=True, xtalk=xtalk,
+                     conv=conv, stepsize=stepsize, computeUBLFit=computeUBLFit,
+                     trust_period=trust_period, maxiter=maxiter)
+
+    _iter = np.copy(m['iter'])
+    for ai in g.keys():
+            g[ai] *= gainstart[ai]
+
+    m, _, _ = redcal(data, info, gains=g, vis=v, uselincal=True, xtalk=xtalk,
+                     conv=conv, stepsize=stepsize, computeUBLFit=computeUBLFit,
+                     trust_period=trust_period, maxiter=0)
+
+    m['iter'] = _iter
+    return m, g, v
+
+
+def removedegen(info, gains, vis, gainstart):
+    '''Run removedegen.'''
+    # divide out by gainstart (e.g. firstcal gains).
+    omnigains = deepcopy(gains)
+    for ai in gains.keys():
+        omnigains[ai] /= gainstart[ai]
+
+    # need to create a fake dataset to input into omnical.
+    fakedata = {}
+    fake_size_like = vis.values()[0]
+    for ai, aj in info.bl_order():
+        fakedata[ai, aj] = np.ones_like(fake_size_like)
+
+    m, g, v = redcal(fakedata, info, gains=omnigains, vis=vis, removedegen=True)
+
+    # multipy back in gainstart.
+    for ai in g.keys():
+        g[ai] *= gainstart[ai]
+
+    return m, g, v
+
+
+
+
 
 
 # XXX if calpar is parsed into a sensible format, then apply_calpar functions should not be necessary.

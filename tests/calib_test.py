@@ -2,6 +2,7 @@ import omnical.info as Oi, omnical.calib as Oc, omnical._omnical as _O
 #import omnical.calibration_omni as omni
 import numpy as np, numpy.linalg as la
 import os, unittest
+import nose.tools as nt
 
 redinfo_psa32 = os.path.dirname(os.path.realpath(__file__)) + '/../doc/redundantinfo_PSA32.txt'
 #infotestpath = os.path.dirname(os.path.realpath(__file__)) + '/redundantinfo_test.bin'
@@ -13,6 +14,45 @@ VERBOSE = False
 class TestMethods(unittest.TestCase):
     def setUp(self):
         self.info = Oi.RedundantInfoLegacy(filename=redinfo_psa32, txtmode=True)
+
+        self.info2 = Oi.RedundantInfo()
+        self.info2.init_from_reds([[(0, 4), (1, 5), (2, 6), (3, 7), (4, 8), (5, 9)],
+                             [(0, 3), (1, 4), (2, 5), (3, 6), (4, 7), (5, 8), (6, 9)],
+                             [(0, 6), (1, 7), (2, 8), (3, 9)],
+                             [(0, 5), (1, 6), (2, 7), (3, 8), (4, 9)],
+                             [(0, 8), (1, 9)],
+                             [(0, 7), (1, 8), (2, 9)],
+                             [(0, 2), (1, 3), (2, 4), (3, 5), (4, 6), (5, 7), (6, 8), (7, 9)],
+                             [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8), (8, 9)]],
+                             np.array([[0., 0., 1.],
+                                       [ 0., 50., 1.],
+                                       [ 0., 100., 1.],
+                                       [ 0., 150., 1.],
+                                       [ 0., 200., 1.],
+                                       [ 0., 250., 1.],
+                                       [ 0., 300., 1.],
+                                       [ 0., 350., 1.],
+                                       [ 0., 400., 1.],
+                                       [ 0., 450., 1.]]))
+
+        self.freqs = np.linspace(.1, .2, 16)
+        self.times = np.arange(4)
+        self.reds = self.info2.get_reds()
+        self.true_vis = {}
+        for i, rg in enumerate(self.reds):
+            rd = np.array(np.random.randn(self.times.size, self.freqs.size) + 1j * np.random.randn(self.times.size, self.freqs.size), dtype=np.complex64)
+            self.true_vis[rg[0]] = rd
+        self.true_gains = {i: np.ones((self.times.size, self.freqs.size), dtype=np.complex64) for i in self.info2.subsetant}  # make it more complicated
+        self.data = {}
+        self.bl2red = {}
+        for rg in self.reds:
+            for r in rg:
+                self.bl2red[r] = rg[0]
+        for redgp in self.reds:
+            for ai, aj in redgp:
+                self.data[ai, aj] = self.true_vis[self.bl2red[ai, aj]] * self.true_gains[ai] * np.conj(self.true_gains[aj])
+        self.unitgains = {ant: np.ones((self.times.size, self.freqs.size), dtype=np.complex64) for ant in self.info2.subsetant}
+
     def test_pack_calpar(self):
         calpar = np.zeros((2,3,Oc.calpar_size(self.info.nAntenna, len(self.info.ublcount))), dtype=np.float32)
         self.assertTrue(np.all(Oc.pack_calpar(self.info,calpar) == 0))
@@ -75,6 +115,40 @@ class TestMethods(unittest.TestCase):
             for i in xrange(56):
                 if not g.has_key(i): continue
                 self.assertAlmostEqual(np.abs(correctcalpar[i] - g[i] * scalar), 0, 4)
+
+    def test_unitgains(self):
+        nt.assert_equal(np.testing.assert_equal(Oc.create_unitgains(self.data),
+                       {ant: np.ones((self.times.size, self.freqs.size),
+                                      dtype=np.complex64) for ant in self.info2.subsetant}), None)
+
+    def test_logcal(self):
+        m, g, v = Oc.logcal(self.data, self.info2, gainstart=self.unitgains)
+        nt.assert_equal(np.testing.assert_equal(g, self.unitgains), None)
+
+    def test_lincal(self):
+        m1, g1, v1 = Oc.logcal(self.data, self.info2, gainstart=self.unitgains)
+        m, g, v = Oc.lincal(self.data, self.info2, gainstart=g1, visstart=v1)
+        nt.assert_equal(np.testing.assert_equal(g, self.unitgains), None)
+
+    def test_redcal_degeneracies(self):
+        m1, g1, v1 = Oc.logcal(self.data, self.info2)
+        m, g, v = Oc.lincal(self.data, self.info2, gainstart=g1, visstart=v1)
+        _, g, v = Oc.removedegen(self.info2, g, v, Oc.create_unitgains(self.data))
+        nt.assert_equal(np.testing.assert_almost_equal(m['chisq'], np.zeros_like(m['chisq']), decimal=8), None)
+
+        # make sure model visibilities equals true visibilities
+        for bl in v.keys():
+            nt.assert_equal(np.testing.assert_almost_equal(v[bl], self.true_vis[bl], decimal=8), None)
+
+        # make sure gains equal true gains
+        for ai in g.keys():
+            nt.assert_equal(np.testing.assert_almost_equal(g[ai], self.true_gains[ai], decimal=8), None)
+
+        # test to make sure degeneracies keep average amplitudes and phases constant.
+        gains = np.array([g[i] for i in g.keys()])
+        nt.assert_equal(np.testing.assert_almost_equal(np.mean(np.abs(gains), axis=0), np.ones_like(gains), decimal=8))
+        nt.assert_equal(np.testing.assert_almost_equal(np.mean(np.angle(gains), axis=0), np.zeros_like(np.real(gains[0])), decimal=8), None)
+
     def test_redcal_xtalk(self):
         antpos = np.array([[0.,0,0],[1,0,0],[2,0,0],[3,0,0]])
         d = {(1,2): np.array([[1.]], dtype=np.complex64), (2,3): np.array([[1.+1j]], dtype=np.complex64)}
