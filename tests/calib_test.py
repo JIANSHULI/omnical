@@ -25,15 +25,15 @@ class TestMethods(unittest.TestCase):
                              [(0, 2), (1, 3), (2, 4), (3, 5), (4, 6), (5, 7), (6, 8), (7, 9)],
                              [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8), (8, 9)]],
                              np.array([[0., 0., 1.],
-                                       [ 0., 50., 1.],
-                                       [ 0., 100., 1.],
-                                       [ 0., 150., 1.],
-                                       [ 0., 200., 1.],
-                                       [ 0., 250., 1.],
-                                       [ 0., 300., 1.],
-                                       [ 0., 350., 1.],
-                                       [ 0., 400., 1.],
-                                       [ 0., 450., 1.]]))
+                                       [0., 50., 1.],
+                                       [0., 100., 1.],
+                                       [0., 150., 1.],
+                                       [0., 200., 1.],
+                                       [0., 250., 1.],
+                                       [0., 300., 1.],
+                                       [0., 350., 1.],
+                                       [0., 400., 1.],
+                                       [0., 450., 1.]]))
 
         self.freqs = np.linspace(.1, .2, 16)
         self.times = np.arange(4)
@@ -52,7 +52,7 @@ class TestMethods(unittest.TestCase):
             for ai, aj in redgp:
                 self.data[ai, aj] = self.true_vis[self.bl2red[ai, aj]] * self.true_gains[ai] * np.conj(self.true_gains[aj])
         self.unitgains = {ant: np.ones((self.times.size, self.freqs.size), dtype=np.complex64) for ant in self.info2.subsetant}
-
+        self.unitdata = {(ai, aj): np.ones((self.times.size, self.freqs.size), dtype=np.complex64) for ai,aj in self.info2.bl_order()}
     def test_pack_calpar(self):
         calpar = np.zeros((2,3,Oc.calpar_size(self.info.nAntenna, len(self.info.ublcount))), dtype=np.float32)
         self.assertTrue(np.all(Oc.pack_calpar(self.info,calpar) == 0))
@@ -122,12 +122,12 @@ class TestMethods(unittest.TestCase):
                                       dtype=np.complex64) for ant in self.info2.subsetant}), None)
 
     def test_logcal(self):
-        m, g, v = Oc.logcal(self.data, self.info2, gainstart=self.unitgains)
+        m, g, v = Oc.logcal(self.unitdata, self.info2, gainstart=self.unitgains)
         nt.assert_equal(np.testing.assert_equal(g, self.unitgains), None)
 
     def test_lincal(self):
-        m1, g1, v1 = Oc.logcal(self.data, self.info2, gainstart=self.unitgains)
-        m, g, v = Oc.lincal(self.data, self.info2, gainstart=g1, visstart=v1)
+        m1, g1, v1 = Oc.logcal(self.unitdata, self.info2, gainstart=self.unitgains)
+        m, g, v = Oc.lincal(self.unitdata, self.info2, gainstart=g1, visstart=v1)
         nt.assert_equal(np.testing.assert_equal(g, self.unitgains), None)
 
     def test_redcal_degeneracies(self):
