@@ -144,7 +144,7 @@ def logcal(data, info, gainstart=None, xtalk=None, maxiter=50, conv=1e-3, stepsi
 
     for ai, aj in datafc.keys():
         if ai in info.subsetant and aj in info.subsetant:
-                datafc[ai, aj] /= (gainstart[ai] * np.conj(gainstart[aj]))
+            datafc[ai, aj] /= (np.conj(gainstart[ai]) * gainstart[aj])
 
     m, g, v = redcal(datafc, info, gains=unitgains, uselogcal=True, xtalk=xtalk,
                      conv=conv, stepsize=stepsize, computeUBLFit=computeUBLFit,
@@ -165,7 +165,7 @@ def lincal(data, info, gainstart, visstart, xtalk=None, maxiter=50, conv=1e-3,
     datafc = deepcopy(data)
     for ai, aj in datafc.keys():
         if ai in info.subsetant and aj in info.subsetant:
-            datafc[ai, aj] /= (gainstart[ai] * np.conj(gainstart[aj]))
+            datafc[ai, aj] /= (np.conj(gainstart[ai]) * gainstart[aj])
 
     unitgains = create_unitgains(data)
     m, g, v = redcal(datafc, info, gains=unitgains, vis=visstart, uselincal=True, xtalk=xtalk,
@@ -173,13 +173,13 @@ def lincal(data, info, gainstart, visstart, xtalk=None, maxiter=50, conv=1e-3,
                      trust_period=trust_period, maxiter=maxiter)
 
     _iter = np.copy(m['iter'])
+    # we should probably be updating model visibilities so that we
+    # preserve the fact that g1xg2*xv12 = data12
     for ai in g.keys():
             g[ai] *= gainstart[ai]
-
     m, _, _ = redcal(data, info, gains=g, vis=v, uselincal=True, xtalk=xtalk,
                      conv=conv, stepsize=stepsize, computeUBLFit=computeUBLFit,
                      trust_period=trust_period, maxiter=0)
-
     m['iter'] = _iter
     return m, g, v
 
