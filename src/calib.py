@@ -46,7 +46,7 @@ class RedundantInfo(info.RedundantInfo):
         try: 
             self._gains:
         except(AttributeError):
-            raise RuntimeError("Call self.pack_calpar() first")
+            raise RuntimeError("Call self.pack_calpar() first.")
 
         dd = [] 
         for ai, aj in self.bl_order():
@@ -71,14 +71,15 @@ class RedundantInfo(info.RedundantInfo):
         baseline, so only one representative of each ubl type should be provided.'''
         assert(calpar.shape[-1] == calpar_size(self.nAntenna, len(self.ublcount)))
         nant = self.nAntenna
+
         if gains is not None:
             for i,ai in enumerate(self.subsetant):
                 if not gains.has_key(ai): continue
-                amp = np.log10(np.abs(gains[ai])); amp.shape = ((1,) + amp.shape)[-2:]
+                amp = np.log10(np.abs( np.ones_like(gains[ai]) )); amp.shape = ((1,) + amp.shape)[-2:] # what goes into omnical is unitgains
                 # XXX does phs need to be conjugated b/c omnical & aipy don't have same conj convention?
-                phs = np.angle(gains[ai]); phs.shape = ((1,) + phs.shape)[-2:]
+                phs = np.angle( np.ones_like(gains[ai]) ); phs.shape = ((1,) + phs.shape)[-2:] # what goes into omnical is unitgains
                 calpar[...,3+i], calpar[...,3+nant+i] = amp, phs
-            self._gains = gains
+            self._gains = gains # save the input gains. To be divided out in order_data
         if vis is not None:
             for (ai,aj),v in vis.iteritems():
                 i,j = self.ant_index(ai), self.ant_index(aj)
