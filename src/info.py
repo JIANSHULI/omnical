@@ -55,13 +55,6 @@ class RedundantInfo(_O.RedundantInfo):
         else: return _O.RedundantInfo.__setattr__(self, key, val)
     def __getitem__(self,k): return self.__getattribute__(k)
     def __setitem__(self,k,val): return self.__setattr__(k,val)
-    def order_data(self, dd):
-        '''Create a data array ordered for use in _omnical.redcal.  'dd' is
-        a dict whose keys are (i,j) antenna tuples; antennas i,j should be ordered to reflect
-        the conjugation convention of the provided data.  'dd' values are 2D arrays
-        of (time,freq) data.''' # XXX does time/freq ordering matter.  should data be 2D instead?
-        return np.array([dd[bl] if dd.has_key(bl) else dd[bl[::-1]].conj()
-            for bl in self.bl_order()]).transpose((1,2,0))
     def bl_order(self):
         '''Return (i,j) baseline tuples in the order that they should appear in data.  Antenna indicies
         are in real-world order (as opposed to the internal ordering used in subsetant).'''
