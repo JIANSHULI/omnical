@@ -176,14 +176,14 @@ def redcal(data, info, xtalk=None, gains=None, vis=None,
     and unique baselines may be passed in through xtalk, gains, and vis dictionaries, respectively.'''
     data = info.order_data(data) # put data into
     calpar = np.zeros((data.shape[0],data.shape[1], calpar_size(info.nAntenna, len(info.ublcount))), dtype=np.float32)
-    pack_calpar(info, calpar, gains=gains, vis=vis)
+    info.pack_calpar(calpar, gains=gains, vis=vis)
     if xtalk is None: xtalk = np.zeros_like(data) # crosstalk (aka "additivein/out") will be overwritten
     else: xtalk = info.order_data(xtalk)
     res = _O.redcal(data, calpar, info, xtalk,
         removedegen=int(removedegen), uselogcal=int(uselogcal), uselincal=int(uselincal),
         maxiter=int(maxiter), conv=float(conv), stepsize=float(stepsize),
         computeUBLFit=int(computeUBLFit), trust_period=int(trust_period))
-    meta, gains, vis = unpack_calpar(info, calpar)
+    meta, gains, vis = info.unpack_calpar(calpar)
     res = dict(zip(map(tuple,info.subsetant[info.bl2d]), res.transpose([2,0,1])))
     meta['res'] = res
     return meta, gains, vis
@@ -195,9 +195,7 @@ def redcal(data, info, xtalk=None, gains=None, vis=None,
 
 def logcal(data, info, gainstart=None, xtalk=None, maxiter=50, conv=1e-3, stepsize=.3,
            computeUBLFit=True, trust_period=1):
-    '''Perform logcal. Calls redcal() function with logcal=True.
-       Before passing into redcal, divides out by gainstart, and before
-       returning solutions, multipy in gainstart.'''
+    '''Perform logcal. Calls redcal() function with logcal=True.'''
 
     m, g, v = redcal(data, info, gains=gainstart, uselogcal=True, xtalk=xtalk,
                      conv=conv, stepsize=stepsize, computeUBLFit=computeUBLFit,
@@ -209,9 +207,8 @@ def logcal(data, info, gainstart=None, xtalk=None, maxiter=50, conv=1e-3, stepsi
 def lincal(data, info, gainstart, visstart, xtalk=None, maxiter=50, conv=1e-3,
            stepsize=.3, computeUBLFit=True, trust_period=1):
     '''Perform lincal. Calls redcal() function with lincal=True.
-       Before passing into redcal, divides out by gainstart, and before
-       returning solutions, multipy in gainstart. In order to correctly calculate
-       chisq's, we run redcal once more with the final solutions as input and maxiter=0.'''
+       In order to correctly calculate chisq's, we run redcal once 
+       more with the final solutions as input and maxiter=0.'''
 
     m, g, v = redcal(data, info, gains=gainstart, vis=visstart, uselincal=True, xtalk=xtalk,
                      conv=conv, stepsize=stepsize, computeUBLFit=computeUBLFit,
