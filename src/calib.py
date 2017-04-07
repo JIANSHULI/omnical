@@ -209,35 +209,15 @@ def redcal(data, info, xtalk=None, gains=None, vis=None,
 # from parsed solutions back to calpar?  if so, might want an object that holds calpar and parses accordingly
 
 
-def create_unitgains(data):
-    '''Create unity gains for all antpols and antennas that appear in data (in format passed to logcal/lincal)'''
-    unitgains = {}
-    ants = list(set([ant for bl in data.keys() for ant in bl]))
-    for ai in ants:
-        unitgains[ai] = np.ones_like(data.values()[0], dtype=np.complex64)
-    return unitgains
-
-
 def logcal(data, info, gainstart=None, xtalk=None, maxiter=50, conv=1e-3, stepsize=.3,
            computeUBLFit=True, trust_period=1):
     '''Perform logcal. Calls redcal() function with logcal=True.
        Before passing into redcal, divides out by gainstart, and before
        returning solutions, multipy in gainstart.'''
-    datafc = deepcopy(data)
 
-    unitgains = create_unitgains(data)
-    if gainstart is None: gainstart = deepcopy(unitgains)
-
-    for ai, aj in datafc.keys():
-        if ai in info.subsetant and aj in info.subsetant:
-            datafc[ai, aj] /= (np.conj(gainstart[ai]) * gainstart[aj])
-
-    m, g, v = redcal(datafc, info, gains=unitgains, uselogcal=True, xtalk=xtalk,
+    m, g, v = redcal(data, info, gains=gainstart, uselogcal=True, xtalk=xtalk,
                      conv=conv, stepsize=stepsize, computeUBLFit=computeUBLFit,
                      trust_period=trust_period, maxiter=maxiter)
-
-    for ai in g.keys():
-        g[ai] *= gainstart[ai]
 
     return m, g, v
 
@@ -248,25 +228,11 @@ def lincal(data, info, gainstart, visstart, xtalk=None, maxiter=50, conv=1e-3,
        Before passing into redcal, divides out by gainstart, and before
        returning solutions, multipy in gainstart. In order to correctly calculate
        chisq's, we run redcal once more with the final solutions as input and maxiter=0.'''
-    datafc = deepcopy(data)
-    for ai, aj in datafc.keys():
-        if ai in info.subsetant and aj in info.subsetant:
-            datafc[ai, aj] /= (np.conj(gainstart[ai]) * gainstart[aj])
 
-    unitgains = create_unitgains(data)
-    m, g, v = redcal(datafc, info, gains=unitgains, vis=visstart, uselincal=True, xtalk=xtalk,
+    m, g, v = redcal(data, info, gains=gainstart, vis=visstart, uselincal=True, xtalk=xtalk,
                      conv=conv, stepsize=stepsize, computeUBLFit=computeUBLFit,
                      trust_period=trust_period, maxiter=maxiter)
 
-    _iter = np.copy(m['iter'])
-    # we should probably be updating model visibilities so that we
-    # preserve the fact that g1xg2*xv12 = data12
-    for ai in g.keys():
-            g[ai] *= gainstart[ai]
-    m, _, _ = redcal(data, info, gains=g, vis=v, uselincal=True, xtalk=xtalk,
-                     conv=conv, stepsize=stepsize, computeUBLFit=computeUBLFit,
-                     trust_period=trust_period, maxiter=0)
-    m['iter'] = _iter
     return m, g, v
 
 
