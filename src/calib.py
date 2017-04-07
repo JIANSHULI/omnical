@@ -38,32 +38,19 @@ class RedundantInfo(info.RedundantInfo):
         """
         return 3 + 2*(nant+nubl) + bool(has_chi2ant)*nant
 
-    def order_data(self, data):
-        '''Create a data array ordered for use in _omnical.redcal. 'data' is
+    def order_data(self, dd):
+        '''Create a data array ordered for use in _omnical.redcal.  'dd' is
         a dict whose keys are (i,j) antenna tuples; antennas i,j should be ordered to reflect
         the conjugation convention of the provided data.  'dd' values are 2D arrays
         of (time,freq) data.''' # XXX does time/freq ordering matter.  should data be 2D instead?
-        try: 
-            self._gains:
-        except(AttributeError):
-            raise RuntimeError("Call self.pack_calpar() first.")
-
-        dd = [] 
-        for ai, aj in self.bl_order():
-            if data.has_key((ai, aj)):
-                dd.append( dd[ai, aj] / (np.conj(self._gains[ai]) * self._gains[aj]) )
-            else:
-                dd.append( np.conj(data[aj, ai]) / (np.conj(self._gains[aj]) * self._gains[ai] )  # are the gains conjugated correctly ???XXX
-        return np.array(dd.transpose((1,2,0))
-
-        
+        return np.array([dd[bl] if dd.has_key(bl) else dd[bl[::-1]].conj()
+            for bl in self.bl_order()]).transpose((1,2,0))
 
     def pack_calpar(self, calpar, gains=None, vis=None)
         '''Pack gain solutions and/or model visibilities for baseline types into a 'calpar' array that follows
         the internal data order used by omnical.  This function facilitates wrapping _omnical.redcal to
         abstract away internal data ordering when providing initial guesses for antenna gains and
         visibilities for ubls.
-        As of version 5: this function saves the gains as self._gains to be used in order data and unpack_calpar.
         self: a RedundantInfo object
         calpar: the appropriately (time,freq,3+2*(nant+nubl)+nant) shaped array into which gains/vis will be copied
         gains: dictionary of antenna number: gain solution (vs time,freq)
@@ -75,11 +62,10 @@ class RedundantInfo(info.RedundantInfo):
         if gains is not None:
             for i,ai in enumerate(self.subsetant):
                 if not gains.has_key(ai): continue
-                amp = np.log10(np.abs( np.ones_like(gains[ai]) )); amp.shape = ((1,) + amp.shape)[-2:] # what goes into omnical is unitgains
+                amp = np.log10(np.abs(gains[ai])); amp.shape = ((1,) + amp.shape)[-2:]
                 # XXX does phs need to be conjugated b/c omnical & aipy don't have same conj convention?
-                phs = np.angle( np.ones_like(gains[ai]) ); phs.shape = ((1,) + phs.shape)[-2:] # what goes into omnical is unitgains
+                phs = np.angle(gains[ai]); phs.shape = ((1,) + phs.shape)[-2:] 
                 calpar[...,3+i], calpar[...,3+nant+i] = amp, phs
-            self._gains = gains # save the input gains. To be divided out in order_data
         if vis is not None:
             for (ai,aj),v in vis.iteritems():
                 i,j = self.ant_index(ai), self.ant_index(aj)
@@ -103,7 +89,6 @@ class RedundantInfo(info.RedundantInfo):
         chisq_per_ant = calpar[...,calpar_size(self.nAntenna, len(self.ublcount), False):]
         for i,ai in enumerate(self.subsetant):
             gains[ai] = 10**calpar[...,3+i] * np.exp(1j*calpar[...,3+self.nAntenna+i])
-            gains[ai] *= self._gains[ai] # multiply back in the initial gains.
             meta['chisq%d' % (ai)] = chisq_per_ant[...,i]
         for u in xrange(len(self.ublcount)):
             # XXX possible that frombuffer might do this a bit more efficiently
@@ -111,7 +96,6 @@ class RedundantInfo(info.RedundantInfo):
             n = self.ublindex[np.sum(self.ublcount[:u])]
             i,j = self.bl2d[n]
             vis[(self.subsetant[i],self.subsetant[j])] = v
-        del(self._gains)
         return meta, gains, vis
 
 # XXX maybe omnical should only solve one time at a time, so that prev sol can be used as starting point for next time
