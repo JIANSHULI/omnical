@@ -1,6 +1,7 @@
 import omnical.info as Oi, omnical.calib as Oc, omnical._omnical as _O
 #import omnical.calibration_omni as omni
 import numpy as np, numpy.linalg as la
+from copy import deepcopy
 import os, unittest
 import nose.tools as nt
 
@@ -42,7 +43,7 @@ class TestMethods(unittest.TestCase):
         for i, rg in enumerate(self.reds):
             rd = np.array(np.random.randn(self.times.size, self.freqs.size) + 1j * np.random.randn(self.times.size, self.freqs.size), dtype=np.complex64)
             self.true_vis[rg[0]] = rd
-        self.true_gains = {i: np.ones((self.times.size, self.freqs.size), dtype=np.complex64) for i in self.info2.subsetant}  # make it more complicated
+        self.true_gains = {i: np.ones((self.times.size, self.freqs.size), dtype=np.complex64) for i in self.info2.subsetant}
         self.data = {}
         self.bl2red = {}
         for rg in self.reds:
@@ -130,24 +131,24 @@ class TestMethods(unittest.TestCase):
         m, g, v = Oc.lincal(self.unitdata, self.info2, gainstart=g1, visstart=v1)
         nt.assert_equal(np.testing.assert_equal(g, self.unitgains), None)
 
-    def test_redcal_degeneracies(self):
-        m1, g1, v1 = Oc.logcal(self.data, self.info2)
-        m, g, v = Oc.lincal(self.data, self.info2, gainstart=g1, visstart=v1)
-        _, g, v = Oc.removedegen(self.info2, g, v, Oc.create_unitgains(self.data))
-        nt.assert_equal(np.testing.assert_almost_equal(m['chisq'], np.zeros_like(m['chisq']), decimal=8), None)
+    # def test_redcal_degeneracies(self):
+    #     m1, g1, v1 = Oc.logcal(self.data, self.info2)
+    #     m, g, v = Oc.lincal(self.data, self.info2, gainstart=g1, visstart=v1)
+    #     _, g, v = Oc.removedegen(self.info2, g, v, Oc.create_unitgains(self.data))
+    #     nt.assert_equal(np.testing.assert_almost_equal(m['chisq'], np.zeros_like(m['chisq']), decimal=8), None)
 
-        # make sure model visibilities equals true visibilities
-        for bl in v.keys():
-            nt.assert_equal(np.testing.assert_almost_equal(v[bl], self.true_vis[bl], decimal=8), None)
+    #     # make sure model visibilities equals true visibilities
+    #     for bl in v.keys():
+    #         nt.assert_equal(np.testing.assert_almost_equal(v[bl], self.true_vis[bl], decimal=8), None)
 
-        # make sure gains equal true gains
-        for ai in g.keys():
-            nt.assert_equal(np.testing.assert_almost_equal(g[ai], self.true_gains[ai], decimal=8), None)
+    #     # make sure gains equal true gains
+    #     for ai in g.keys():
+    #         nt.assert_equal(np.testing.assert_almost_equal(g[ai], self.true_gains[ai], decimal=8), None)
 
-        # test to make sure degeneracies keep average amplitudes and phases constant.
-        gains = np.array([g[i] for i in g.keys()])
-        nt.assert_equal(np.testing.assert_almost_equal(np.mean(np.abs(gains), axis=0), np.ones_like(gains), decimal=8))
-        nt.assert_equal(np.testing.assert_almost_equal(np.mean(np.angle(gains), axis=0), np.zeros_like(np.real(gains[0])), decimal=8), None)
+    #     # test to make sure degeneracies keep average amplitudes and phases constant.
+    #     gains = np.array([g[i] for i in g.keys()])
+    #     nt.assert_equal(np.testing.assert_almost_equal(np.mean(np.abs(gains), axis=0), np.ones_like(gains), decimal=8))
+    #     nt.assert_equal(np.testing.assert_almost_equal(np.mean(np.angle(gains), axis=0), np.zeros_like(np.real(gains[0])), decimal=8), None)
 
     def test_redcal_xtalk(self):
         antpos = np.array([[0.,0,0],[1,0,0],[2,0,0],[3,0,0]])
@@ -167,6 +168,132 @@ class TestMethods(unittest.TestCase):
         self.assertEqual(g[2][0,0], 1.)
         self.assertEqual(g[3][0,0], 1.)
         self.assertEqual(m['res'][(2,3)][0][0],0.)
+
+
+
+class TestLogCalLinCalAndRemoveDegen(unittest.TestCase):
+    """This test runs omnical with full complexity except thermal noise: non-trivial gains and visibilities, large firstcal phase wraps, degeneracy removal."""
+    
+    def removedegen2(self, info, gains, vis, gainstart):
+        # divide out by gainstart (e.g. firstcal gains).    
+        g,v = deepcopy(gains),deepcopy(vis)
+        for ant in gains.keys():
+            g[ant] /= gainstart[ant]
+        
+        # Calculate matrices used for projecting out degeneracies from antenna locations
+        Rgains =  np.array([np.append(ai,1) for ai in info.antloc]) 
+        Mgains = np.linalg.pinv(Rgains.T.dot(Rgains)).dot(Rgains.T) 
+        Rvis = np.hstack((-info.ubl, np.zeros((len(info.ubl),1))))
+        reds = info.get_reds()
+        ntimes, nfreqs = gains.values()[0].shape
+        
+        for t in range(ntimes):
+            for f in range(nfreqs):
+                gainSols = np.array([g[ai][t,f] for ai in info.subsetant])
+                visSols = np.array([vis[rg[0]][t,f] for rg in reds])
+                
+                #Fix amplitudes
+                newGainSols = gainSols * np.exp(-1.0j * np.mean(np.angle(gainSols)))
+                newGainSols = newGainSols / np.mean(np.abs(newGainSols))
+                newVisSols = visSols * np.mean(np.abs(gainSols))**2 
+
+                #Fix phases
+                degenRemoved = Mgains.dot(np.angle(newGainSols))
+                newGainSols = newGainSols * np.exp(-1.0j * Rgains.dot(degenRemoved))
+                newVisSols = newVisSols * np.exp(-1.0j * Rvis.dot(degenRemoved))
+
+                for i,ant in enumerate(info.subsetant): g[ant][t,f] = newGainSols[i]
+                for i,rg in enumerate(reds): v[rg[0]][t,f] = newVisSols[i]    
+
+        # multipy back in gainstart.
+        for ai in g.keys():
+            g[ai] *= gainstart[ai]
+
+        return {}, g, v 
+
+    def chisq(self, data, g, v, reds):
+        return np.mean(np.array([np.abs(data[(i,j)] - np.conj(g[i])*g[j]*v[rg[0]])**2 for rg in reds for (i,j) in rg]),axis=0)
+
+    def test_full_functionality(self):
+        antpos = np.array([[ 14.60000038, -25.28794098,   1.], [ 21.89999962, -12.64397049,   1.], [ 14.60000038,  25.28794098,   1.], [-21.89999962, -12.64397049,   1.], [-14.60000038,   0.        ,   1.], [ 21.89999962,  12.64397049,   1.], [ 29.20000076,   0.        ,   1.], [-14.60000038, -25.28794098,   1.], [  0.        ,  25.28794098,   1.], [  0.        , -25.28794098,   1.], [  0.        ,   0.        ,   1.], [ -7.30000019, -12.64397049,   1.], [ -7.30000019,  12.64397049,   1.], [-21.89999962,  12.64397049,   1.], [-29.20000076,   0.        ,   1.], [ 14.60000038,   0.        ,   1.], [-14.60000038,  25.28794098,   1.], [  7.30000019, -12.64397049,   1.]])
+        reds = [[(0, 8), (9, 16)], [(13, 15), (14, 17), (3, 0), (4, 1), (16, 5), (12, 6)], [(3, 17), (4, 15), (7, 0), (11, 1), (16, 2), (12, 5), (10, 6), (14, 10)], [(3, 6), (14, 5)], [(0, 9), (1, 17), (2, 8), (4, 14), (6, 15), (8, 16), (12, 13), (11, 3), (10, 4), (9, 7), (15, 10), (17, 11)], [(3, 8), (11, 2), (9, 5)], [(3, 9), (4, 17), (12, 15), (11, 0), (10, 1), (8, 5), (13, 10), (14, 11)], [(0, 13), (1, 16)], [(0, 4), (1, 12), (6, 8), (9, 14), (15, 16), (17, 13)], [(0, 5), (3, 16), (7, 12), (17, 2), (11, 8)], [(0, 10), (7, 14), (10, 16), (11, 13), (6, 2), (9, 4), (15, 8), (17, 12)], [(1, 9), (2, 12), (5, 10), (6, 17), (8, 13), (12, 14), (10, 3), (17, 7), (15, 11)], [(2, 3), (5, 7)], [(16, 17), (12, 0), (8, 1), (13, 9)], [(0, 17), (1, 15), (3, 14), (4, 13), (9, 11), (10, 12), (12, 16), (5, 2), (7, 3), (11, 4), (6, 5), (17, 10)], [(3, 15), (4, 5), (7, 1), (13, 2), (11, 6)], [(5, 15), (8, 12), (10, 11), (13, 14), (15, 17), (1, 0), (6, 1), (4, 3), (12, 4), (11, 7), (17, 9), (16, 13)], [(0, 15), (1, 5), (3, 13), (4, 16), (9, 10), (11, 12), (15, 2), (7, 4), (10, 8)], [(0, 6), (3, 12), (4, 8), (7, 10), (9, 15), (14, 16), (10, 2), (17, 5)], [(8, 17), (2, 1), (13, 7), (12, 9), (16, 11)], [(0, 2), (7, 16), (9, 8)], [(4, 6), (14, 15), (3, 1), (13, 5)], [(0, 14), (1, 13), (6, 16)], [(2, 14), (6, 7), (5, 3)], [(2, 9), (8, 7)], [(2, 4), (5, 11), (6, 9), (8, 14), (15, 7)], [(1, 14), (6, 13)], [(0, 8), (9, 16)], [(13, 15), (14, 17), (3, 0), (4, 1), (16, 5), (12, 6)], [(3, 17), (4, 15), (7, 0), (11, 1), (16, 2), (12, 5), (10, 6), (14, 10)], [(3, 6), (14, 5)], [(0, 9), (1, 17), (2, 8), (4, 14), (6, 15), (8, 16), (12, 13), (11, 3), (10, 4), (9, 7), (15, 10), (17, 11)], [(3, 8), (11, 2), (9, 5)], [(3, 9), (4, 17), (12, 15), (11, 0), (10, 1), (8, 5), (13, 10), (14, 11)], [(0, 13), (1, 16)], [(0, 4), (1, 12), (6, 8), (9, 14), (15, 16), (17, 13)], [(0, 5), (3, 16), (7, 12), (17, 2), (11, 8)], [(0, 10), (7, 14), (10, 16), (11, 13), (6, 2), (9, 4), (15, 8), (17, 12)], [(1, 9), (2, 12), (5, 10), (6, 17), (8, 13), (12, 14), (10, 3), (17, 7), (15, 11)], [(2, 3), (5, 7)], [(16, 17), (12, 0), (8, 1), (13, 9)], [(0, 17), (1, 15), (3, 14), (4, 13), (9, 11), (10, 12), (12, 16), (5, 2), (7, 3), (11, 4), (6, 5), (17, 10)], [(3, 15), (4, 5), (7, 1), (13, 2), (11, 6)], [(5, 15), (8, 12), (10, 11), (13, 14), (15, 17), (1, 0), (6, 1), (4, 3), (12, 4), (11, 7), (17, 9), (16, 13)], [(0, 15), (1, 5), (3, 13), (4, 16), (9, 10), (11, 12), (15, 2), (7, 4), (10, 8)], [(0, 6), (3, 12), (4, 8), (7, 10), (9, 15), (14, 16), (10, 2), (17, 5)], [(8, 17), (2, 1), (13, 7), (12, 9), (16, 11)], [(0, 2), (7, 16), (9, 8)], [(4, 6), (14, 15), (3, 1), (13, 5)], [(0, 14), (1, 13), (6, 16)], [(2, 14), (6, 7), (5, 3)], [(2, 9), (8, 7)], [(2, 4), (5, 11), (6, 9), (8, 14), (15, 7)], [(1, 14), (6, 13)], [(0, 8), (9, 16)], [(13, 15), (14, 17), (3, 0), (4, 1), (16, 5), (12, 6)], [(3, 17), (4, 15), (7, 0), (11, 1), (16, 2), (12, 5), (10, 6), (14, 10)], [(3, 6), (14, 5)], [(0, 9), (1, 17), (2, 8), (4, 14), (6, 15), (8, 16), (12, 13), (11, 3), (10, 4), (9, 7), (15, 10), (17, 11)], [(3, 8), (11, 2), (9, 5)], [(3, 9), (4, 17), (12, 15), (11, 0), (10, 1), (8, 5), (13, 10), (14, 11)], [(0, 13), (1, 16)], [(0, 4), (1, 12), (6, 8), (9, 14), (15, 16), (17, 13)], [(0, 5), (3, 16), (7, 12), (17, 2), (11, 8)], [(0, 10), (7, 14), (10, 16), (11, 13), (6, 2), (9, 4), (15, 8), (17, 12)], [(1, 9), (2, 12), (5, 10), (6, 17), (8, 13), (12, 14), (10, 3), (17, 7), (15, 11)], [(2, 3), (5, 7)], [(16, 17), (12, 0), (8, 1), (13, 9)], [(0, 17), (1, 15), (3, 14), (4, 13), (9, 11), (10, 12), (12, 16), (5, 2), (7, 3), (11, 4), (6, 5), (17, 10)], [(3, 15), (4, 5), (7, 1), (13, 2), (11, 6)], [(5, 15), (8, 12), (10, 11), (13, 14), (15, 17), (1, 0), (6, 1), (4, 3), (12, 4), (11, 7), (17, 9), (16, 13)], [(0, 15), (1, 5), (3, 13), (4, 16), (9, 10), (11, 12), (15, 2), (7, 4), (10, 8)], [(0, 6), (3, 12), (4, 8), (7, 10), (9, 15), (14, 16), (10, 2), (17, 5)], [(8, 17), (2, 1), (13, 7), (12, 9), (16, 11)], [(0, 2), (7, 16), (9, 8)], [(4, 6), (14, 15), (3, 1), (13, 5)], [(0, 14), (1, 13), (6, 16)], [(2, 14), (6, 7), (5, 3)], [(2, 9), (8, 7)], [(2, 4), (5, 11), (6, 9), (8, 14), (15, 7)], [(1, 14), (6, 13)], [(0, 8), (9, 16)], [(13, 15), (14, 17), (3, 0), (4, 1), (16, 5), (12, 6)], [(3, 17), (4, 15), (7, 0), (11, 1), (16, 2), (12, 5), (10, 6), (14, 10)], [(3, 6), (14, 5)], [(0, 9), (1, 17), (2, 8), (4, 14), (6, 15), (8, 16), (12, 13), (11, 3), (10, 4), (9, 7), (15, 10), (17, 11)], [(3, 8), (11, 2), (9, 5)], [(3, 9), (4, 17), (12, 15), (11, 0), (10, 1), (8, 5), (13, 10), (14, 11)], [(0, 13), (1, 16)], [(0, 4), (1, 12), (6, 8), (9, 14), (15, 16), (17, 13)], [(0, 5), (3, 16), (7, 12), (17, 2), (11, 8)], [(0, 10), (7, 14), (10, 16), (11, 13), (6, 2), (9, 4), (15, 8), (17, 12)], [(1, 9), (2, 12), (5, 10), (6, 17), (8, 13), (12, 14), (10, 3), (17, 7), (15, 11)], [(2, 3), (5, 7)], [(16, 17), (12, 0), (8, 1), (13, 9)], [(0, 17), (1, 15), (3, 14), (4, 13), (9, 11), (10, 12), (12, 16), (5, 2), (7, 3), (11, 4), (6, 5), (17, 10)], [(3, 15), (4, 5), (7, 1), (13, 2), (11, 6)], [(5, 15), (8, 12), (10, 11), (13, 14), (15, 17), (1, 0), (6, 1), (4, 3), (12, 4), (11, 7), (17, 9), (16, 13)], [(0, 15), (1, 5), (3, 13), (4, 16), (9, 10), (11, 12), (15, 2), (7, 4), (10, 8)], [(0, 6), (3, 12), (4, 8), (7, 10), (9, 15), (14, 16), (10, 2), (17, 5)], [(8, 17), (2, 1), (13, 7), (12, 9), (16, 11)], [(0, 2), (7, 16), (9, 8)], [(4, 6), (14, 15), (3, 1), (13, 5)], [(0, 14), (1, 13), (6, 16)], [(2, 14), (6, 7), (5, 3)], [(2, 9), (8, 7)], [(2, 4), (5, 11), (6, 9), (8, 14), (15, 7)], [(1, 14), (6, 13)]]
+        freqs = np.linspace(.1,.2,64)
+        times = np.arange(11)
+        ants = np.arange(len(antpos))
+
+        info = Oi.RedundantInfo()
+        info.init_from_reds(reds, antpos)
+
+        # Simulate unique "true" visibilities
+        np.random.seed(21)
+        vis_true = {}
+        i = 0
+        for rg in reds:
+            vis_true[rg[0]] = np.array(1.0*np.random.randn(len(times),len(freqs)) + 1.0j*np.random.randn(len(times),len(freqs)), dtype=np.complex64)
+
+        # Smulate true gains and then remove degeneracies from true gains so that removedegen will produce exact answers
+        gain_true = {}
+        for i in ants:
+            gain_true[i] = np.array(1. + (.1*np.random.randn(len(times),len(freqs)) + .1j*np.random.randn(len(times),len(freqs))), dtype=np.complex64) 
+        g0 = {i: np.ones_like(gain_true[i]) for i in ants}
+        _, gain_true, _ = self.removedegen2(info, gain_true, vis_true, g0)
+       
+        # Generate and apply firstcal gains
+        fcgains = {}
+        for i in ants:
+            fcspectrum = np.exp(2.0j * np.pi * 5.0 * np.random.randn() * freqs)
+            fcgains[i] = np.array([fcspectrum for t in times], dtype=np.complex64)
+        for i in ants: gain_true[i] *= fcgains[i]
+
+        # Generate fake data 
+        bl2ublkey = {bl: rg[0] for rg in reds for bl in rg}
+        data = {}
+        for rg in reds:
+            for (i,j) in rg:
+                data[(i,j)] = np.array(np.conj(gain_true[i]) * gain_true[j] * vis_true[rg[0]], dtype=np.complex64)
+
+        # Run logcal, lincal, and removedegen
+        m1, g1, v1 = Oc.logcal(data, info, gainstart=fcgains)
+        m2, g2, v2 = Oc.lincal(data, info, gainstart=g1, visstart=v1,maxiter=50)
+        _, g3, v3 = Oc.removedegen(info, g2, v2, fcgains)
+        
+        #Test that lincal actually converged
+        np.testing.assert_array_less(m2['iter'], 50*np.ones_like(m2['iter']))
+
+        #Test that chisq is 0 after lincal in the gains/vis/data and in the meta
+        chiSqBeforeRemoveDegen = self.chisq(data,g2,v2,reds)
+        np.testing.assert_almost_equal(chiSqBeforeRemoveDegen, np.zeros_like(chiSqBeforeRemoveDegen), decimal=10)
+        np.testing.assert_almost_equal(m2['chisq'], np.zeros_like(m2['chisq']), decimal=10)
+
+        #Test that chisq is 0 after lincal and remove degen
+        chiSqAfterRemoveDegen = self.chisq(data,g3,v3,reds)
+        np.testing.assert_almost_equal(chiSqAfterRemoveDegen, np.zeros_like(chiSqAfterRemoveDegen), decimal=10)
+
+        #Test that the solution has degeneracies removed properly
+        Rgains =  np.array([np.append(ai,1) for ai in info.antloc]) 
+        Mgains = np.linalg.pinv(Rgains.T.dot(Rgains)).dot(Rgains.T) 
+        ntimes, nfreqs = g3.values()[0].shape
+        for t in range(ntimes):
+            for f in range(nfreqs):
+                gainSols = np.array([g3[ai][t,f]/fcgains[ai][t,f] for ai in info.subsetant])
+                np.testing.assert_almost_equal(np.mean(np.abs(gainSols)), 1.0, decimal=5)
+                np.testing.assert_almost_equal(Mgains.dot(np.angle(gainSols)), [0.0,0.0,0.0,0.0], decimal=5)
+
+        #Test that the correct gains and visibilities are recovered
+        for ai in info.subsetant:
+            np.testing.assert_array_almost_equal(g3[ai], gain_true[ai], decimal=5)
+        for bl in vis_true.keys():
+            np.testing.assert_array_almost_equal(v3[bl], vis_true[bl], decimal=5)
+
+        
+
+#        print 'chisq:',
+#        print 'chisq:',self.chisq(data,g3,v3,reds)
+
+
+        #_, g32, v32 = removedegen2(info, g2, v2, fcgains)
+
+
 
 
 class TestRedCal(unittest.TestCase):
