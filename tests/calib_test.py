@@ -285,14 +285,6 @@ class TestLogCalLinCalAndRemoveDegen(unittest.TestCase):
         for bl in vis_true.keys():
             np.testing.assert_array_almost_equal(v3[bl], vis_true[bl], decimal=5)
 
-        
-
-#        print 'chisq:',
-#        print 'chisq:',self.chisq(data,g3,v3,reds)
-
-
-        #_, g32, v32 = removedegen2(info, g2, v2, fcgains)
-
 
 
 
