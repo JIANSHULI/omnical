@@ -193,37 +193,39 @@ def redcal(data, info, xtalk=None, gains=None, vis=None,
 # from parsed solutions back to calpar?  if so, might want an object that holds calpar and parses accordingly
 
 
-def logcal(data, info, gainstart=None, xtalk=None, maxiter=50, conv=1e-3, stepsize=.3,
+def logcal(data, info, gains=None, xtalk=None, maxiter=50, conv=1e-3, stepsize=.3,
            computeUBLFit=True, trust_period=1):
     '''Perform logcal. Calls redcal() function with logcal=True.'''
 
-    m, g, v = redcal(data, info, gains=gainstart, uselogcal=True, xtalk=xtalk,
+    m, g, v = redcal(data, info, gains=gains, uselogcal=True, xtalk=xtalk,
                      conv=conv, stepsize=stepsize, computeUBLFit=computeUBLFit,
                      trust_period=trust_period, maxiter=maxiter)
 
     return m, g, v
 
 
-def lincal(data, info, gainstart, visstart, xtalk=None, maxiter=50, conv=1e-3,
+def lincal(data, info, gains=gains, vis=vis, xtalk=None, maxiter=50, conv=1e-3,
            stepsize=.3, computeUBLFit=True, trust_period=1):
     '''Perform lincal. Calls redcal() function with lincal=True.
        In order to correctly calculate chisq's, we run redcal once 
        more with the final solutions as input and maxiter=0.'''
 
-    m, g, v = redcal(data, info, gains=gainstart, vis=visstart, uselincal=True, xtalk=xtalk,
+    m, g, v = redcal(data, info, gains=gains, vis=vis, uselincal=True, xtalk=xtalk,
                      conv=conv, stepsize=stepsize, computeUBLFit=computeUBLFit,
                      trust_period=trust_period, maxiter=maxiter)
 
     return m, g, v
 
 
-def removedegen(info, gains, vis, gainstart):
+def removedegen(info, gains, vis, nondegenerategains=None):
     '''Run removedegen.'''
-    # divide out by gainstart (e.g. firstcal gains).
+    # divide out by nondegenerategains (e.g. firstcal gains).
     omnigains = deepcopy(gains)
-    for ai in gains.keys():
-        omnigains[ai] /= gainstart[ai]
+    if nondegenerategains:
+        for ai in gains.keys():
+            omnigains[ai] /= nondegenerategains[ai]
 
+    # XXX make data an optional parameter into redcal
     # need to create a fake dataset to input into omnical.
     fakedata = {}
     fake_size_like = vis.values()[0]
@@ -232,9 +234,10 @@ def removedegen(info, gains, vis, gainstart):
 
     m, g, v = redcal(fakedata, info, gains=omnigains, vis=vis, removedegen=True)
 
-    # multipy back in gainstart.
-    for ai in g.keys():
-        g[ai] *= gainstart[ai]
+    # multipy back in nondegenerategains.
+    if nondegenerategains:
+        for ai in g.keys():
+            g[ai] *= nondegenerategains[ai]
 
     return m, g, v
 
