@@ -9,7 +9,7 @@ import numpy as np
 import os, sys
 import _omnical as _O
 from copy import deepcopy
-from info import RedundantInfo as info.RedundantInfo
+import info
 from arrayinfo import ArrayInfo, ArrayInfoLegacy
 import warnings
 with warnings.catch_warnings():
@@ -46,7 +46,7 @@ class RedundantInfo(info.RedundantInfo):
         return np.array([dd[bl] if dd.has_key(bl) else dd[bl[::-1]].conj()
             for bl in self.bl_order()]).transpose((1,2,0))
 
-    def pack_calpar(self, calpar, gains=None, vis=None)
+    def pack_calpar(self, calpar, gains=None, vis=None):
         '''Pack gain solutions and/or model visibilities for baseline types into a 'calpar' array that follows
         the internal data order used by omnical.  This function facilitates wrapping _omnical.redcal to
         abstract away internal data ordering when providing initial guesses for antenna gains and
@@ -56,7 +56,7 @@ class RedundantInfo(info.RedundantInfo):
         gains: dictionary of antenna number: gain solution (vs time,freq)
         vis: dictionary of baseline: model visibility (vs time,freq).  baseline is cross-indexed to the appropriate
         baseline, so only one representative of each ubl type should be provided.'''
-        assert(calpar.shape[-1] == calpar_size(self.nAntenna, len(self.ublcount)))
+        assert(calpar.shape[-1] == self.calpar_size(self.nAntenna, len(self.ublcount)))
         nant = self.nAntenna
 
         if gains is not None:
@@ -79,14 +79,14 @@ class RedundantInfo(info.RedundantInfo):
                 calpar[...,3+2*nant+2*u+1] = v.imag
         return calpar
 
-    def unpack_calpar(self, calpar):
+    def unpack_calpar(self, calpar, res=None):
         '''Parse the calpar result from omnical (complementary to pack_calpar).
         Result is parsed into meta, gains, and vis dicts which are returned.  meta has keys 'iter' and
         'chisq', gains as keys of antenna number, and vis has unique baseline solutions, indexed by a
         representative baseline.'''
         meta, gains, vis = {}, {}, {}
         meta['iter'],meta['chisq'] = calpar[...,0], calpar[...,2]
-        chisq_per_ant = calpar[...,calpar_size(self.nAntenna, len(self.ublcount), False):]
+        chisq_per_ant = calpar[...,self.calpar_size(self.nAntenna, len(self.ublcount), False):]
         for i,ai in enumerate(self.subsetant):
             gains[ai] = 10**calpar[...,3+i] * np.exp(1j*calpar[...,3+self.nAntenna+i])
             meta['chisq%d' % (ai)] = chisq_per_ant[...,i]
@@ -96,6 +96,9 @@ class RedundantInfo(info.RedundantInfo):
             n = self.ublindex[np.sum(self.ublcount[:u])]
             i,j = self.bl2d[n]
             vis[(self.subsetant[i],self.subsetant[j])] = v
+        if res is not None:
+            res = dict(zip(map(tuple,self.subsetant[self.bl2d]), res.transpose([2,0,1])))
+            meta['res'] = res
         return meta, gains, vis
 
 # XXX maybe omnical should only solve one time at a time, so that prev sol can be used as starting point for next time
@@ -169,23 +172,21 @@ class RedundantInfo(info.RedundantInfo):
 #     return meta, gains, vis
 
 def redcal(data, info, xtalk=None, gains=None, vis=None,
-        removedegen=False, uselogcal=False, uselincal=False, maxiter=50, conv=1e-3, stepsize=.3, computeUBLFit=True, trust_period=1):
+        removedegen=False, uselogcal=False, uselincal=False, maxiter=50, conv=1e-3, stepsize=.3, computeUBLFit=True, trust_period=1, **kwargs):
     '''Perform redundant calibration, parsing results into meta, gains, and vis dicts which are returned.  This
     function wraps _omnical.redcal to abstract away internal data ordering.  'data' is a dict of measured visibilities,
     indexed by baseline.  Initial guesses for xtalk, antenna gains,
     and unique baselines may be passed in through xtalk, gains, and vis dictionaries, respectively.'''
     data = info.order_data(data) # put data into
-    calpar = np.zeros((data.shape[0],data.shape[1], calpar_size(info.nAntenna, len(info.ublcount))), dtype=np.float32)
-    info.pack_calpar(calpar, gains=gains, vis=vis)
+    calpar = np.zeros((data.shape[0],data.shape[1], info.calpar_size(info.nAntenna, len(info.ublcount))), dtype=np.float32)
+    info.pack_calpar(calpar, gains=gains, vis=vis, **kwargs)
     if xtalk is None: xtalk = np.zeros_like(data) # crosstalk (aka "additivein/out") will be overwritten
     else: xtalk = info.order_data(xtalk)
     res = _O.redcal(data, calpar, info, xtalk,
         removedegen=int(removedegen), uselogcal=int(uselogcal), uselincal=int(uselincal),
         maxiter=int(maxiter), conv=float(conv), stepsize=float(stepsize),
         computeUBLFit=int(computeUBLFit), trust_period=int(trust_period))
-    meta, gains, vis = info.unpack_calpar(calpar)
-    res = dict(zip(map(tuple,info.subsetant[info.bl2d]), res.transpose([2,0,1])))
-    meta['res'] = res
+    meta, gains, vis = info.unpack_calpar(calpar, res=res, **kwargs)
     return meta, gains, vis
 
 # TODO: wrap _O._redcal to return calpar parsed up sensibly
@@ -204,7 +205,7 @@ def logcal(data, info, gains=None, xtalk=None, maxiter=50, conv=1e-3, stepsize=.
     return m, g, v
 
 
-def lincal(data, info, gains=gains, vis=vis, xtalk=None, maxiter=50, conv=1e-3,
+def lincal(data, info, gains=None, vis=None, xtalk=None, maxiter=50, conv=1e-3,
            stepsize=.3, computeUBLFit=True, trust_period=1):
     '''Perform lincal. Calls redcal() function with lincal=True.
        In order to correctly calculate chisq's, we run redcal once 
@@ -217,27 +218,12 @@ def lincal(data, info, gains=gains, vis=vis, xtalk=None, maxiter=50, conv=1e-3,
     return m, g, v
 
 
-def removedegen(info, gains, vis, nondegenerategains=None):
+def removedegen(data, info, gains, vis, nondegenerategains):
     '''Run removedegen.'''
-    # divide out by nondegenerategains (e.g. firstcal gains).
-    omnigains = deepcopy(gains)
-    if nondegenerategains:
-        for ai in gains.keys():
-            omnigains[ai] /= nondegenerategains[ai]
-
     # XXX make data an optional parameter into redcal
     # need to create a fake dataset to input into omnical.
-    fakedata = {}
-    fake_size_like = vis.values()[0]
-    for ai, aj in info.bl_order():
-        fakedata[ai, aj] = np.ones_like(fake_size_like)
 
-    m, g, v = redcal(fakedata, info, gains=omnigains, vis=vis, removedegen=True)
-
-    # multipy back in nondegenerategains.
-    if nondegenerategains:
-        for ai in g.keys():
-            g[ai] *= nondegenerategains[ai]
+    m, g, v = redcal(data, info, gains=gains, vis=vis, removedegen=True, nondegenerategains=nondegenerategains)
 
     return m, g, v
 
