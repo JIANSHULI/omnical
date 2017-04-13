@@ -237,14 +237,14 @@ class TestLogCalLinCalAndRemoveDegen(unittest.TestCase):
                 data[(i,j)] = np.array(np.conj(gain_true[i]) * gain_true[j] * vis_true[rg[0]], dtype=np.complex64)
 
         # Run logcal, lincal, and removedegen
-        m1, g1, v1 = Oc.logcal(data, info)
+        m1, g1, v1 = Oc.logcal(data, info, gains=fcgains)
         m2, g2, v2 = Oc.lincal(data, info, gains=g1, vis=v1)
-        # divide out by firstcal gains.
+        _g2 = {}
         for k in g2:
-            g2[k]/=fcgains[k]
-        _, g3, v3 = Oc.removedegen(data, info, g2, v2)
-        #multiply back in firstcal gains
-        for k in g3: g3[k]*=fcgains[k]
+            _g2[k] = g2[k]/fcgains[k]
+        _, g3, v3 = Oc.removedegen(data, info, _g2, v2)
+        for k in g3:
+            g3[k] *= fcgains[k]
         
         #Test that lincal actually converged
         np.testing.assert_array_less(m2['iter'], 50*np.ones_like(m2['iter']))
@@ -310,12 +310,14 @@ class TestRedCal(unittest.TestCase):
                 data = data.reshape((1,1,len(data)))
                 dd = _info.make_dd(data)
                 np.savez('calib_test_data_%02d.npz' % index, bls=np.array(dd.keys()), vis=np.array(dd.values()))
-            info = Oc.RedundantInfo()
-            info.init_from_reds(calibrator.Info.get_reds(), calibrator.Info.get_antpos())
+            #info = Oc.RedundantInfo()
+            #info.init_from_reds(calibrator.Info.get_reds(), calibrator.Info.get_antpos())
+            info = calibrator.Info
             npz = np.load(testdata % index)
             bls = [tuple(bl) for bl in npz['bls']]
             dd = dict(zip(bls, npz['vis']))
-            data = info.order_data(dd)
+            data = np.array([dd[bl] if dd.has_key(bl) else dd[bl[::-1]].conj() for bl in info.bl_order()]).transpose((1,2,0))
+            #data = info.order_data(dd) # just needed Oc.RedundantInfo for orderdata
             ####do calibration################
             calibrator.removeDegeneracy = True
             calibrator.removeAdditive = False
@@ -356,12 +358,12 @@ class TestRedCal(unittest.TestCase):
         nant = 56
         calibrator = Oc.RedundantCalibrator(nant)
         calibrator.compute_redundantinfo(arrayinfopath)
-        info = Oc.RedundantInfo()
-        info.init_from_reds(calibrator.Info.get_reds(), calibrator.Info.get_antpos())
+        info = calibrator.Info
         npz = np.load(testdata % (fileindex-1))
         bls = [tuple(bl) for bl in npz['bls']]
         dd = dict(zip(bls, npz['vis']))
-        data = info.order_data(dd)
+        data = np.array([dd[bl] if dd.has_key(bl) else dd[bl[::-1]].conj() for bl in info.bl_order()]).transpose((1,2,0))
+        #data = info.order_data(dd)
 
         ####Config parameters###################################
         needrawcal = True #if true, (generally true for raw data) you need to take care of having raw calibration parameters in float32 binary format freq x nant
@@ -383,8 +385,8 @@ class TestRedCal(unittest.TestCase):
             calibrator.logcal(ndata, np.zeros_like(ndata), verbose=VERBOSE)
             calibrator.lincal(ndata, np.zeros_like(ndata), verbose=VERBOSE)
 
-            linchi2 = (calibrator.rawCalpar[0,0,2]/(info['At'].shape[1] - info['At'].shape[0])/(2*std**2))**0.5
-            logchi2 = (calibrator.rawCalpar[0,0,1]/(info['At'].shape[1] - info['At'].shape[0])/(2*std**2))**0.5
+            linchi2 = (calibrator.rawCalpar[0,0,2]/(calibrator.Info['At'].shape[1] - calibrator.Info['At'].shape[0])/(2*std**2))**0.5
+            logchi2 = (calibrator.rawCalpar[0,0,1]/(calibrator.Info['At'].shape[1] - calibrator.Info['At'].shape[0])/(2*std**2))**0.5
             linlist[i] = linchi2
             loglist[i] = logchi2
 
