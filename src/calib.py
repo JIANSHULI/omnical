@@ -218,12 +218,11 @@ def lincal(data, info, gains=None, vis=None, xtalk=None, maxiter=50, conv=1e-3,
     return m, g, v
 
 
-def removedegen(data, info, gains, vis, nondegenerategains):
+def removedegen(data, info, gains, vis, **kwargs):
     '''Run removedegen.'''
     # XXX make data an optional parameter into redcal
-    # need to create a fake dataset to input into omnical.
 
-    m, g, v = redcal(data, info, gains=gains, vis=vis, removedegen=True, nondegenerategains=nondegenerategains)
+    m, g, v = redcal(data, info, gains=gains, vis=vis, removedegen=True, **kwargs)
 
     return m, g, v
 
@@ -367,6 +366,11 @@ class RedundantCalibrator:
         if info is not None: # XXX what is the point of leaving info == None?
             if type(info) == str: self.read_redundantinfo(info)
             else: self.Info = info
+    def calpar_size(self, nant, nubl, has_chi2ant=True):
+        """
+        Quickly compute the size of the calpar array.
+        """
+        return 3 + 2*(nant+nubl) + bool(has_chi2ant)*nant 
     def read_redundantinfo(self, filename, txtmode=False, verbose=False):
         '''redundantinfo is necessary for running redundant calibration. The text file
         should contain 29 lines each describes one item in the info.'''
@@ -385,8 +389,8 @@ class RedundantCalibrator:
         self.nTime, self.nFrequency = data.shape[:2]
         nUBL = len(self.Info.ublcount)
         if uselogcal or self.rawCalpar is None:
-            self.rawCalpar = np.zeros((self.nTime, self.nFrequency, calpar_size(self.Info.nAntenna, nUBL)), dtype=np.float32)
-        assert(self.rawCalpar.shape == (self.nTime,self.nFrequency, calpar_size(self.Info.nAntenna, nUBL)))
+            self.rawCalpar = np.zeros((self.nTime, self.nFrequency, self.calpar_size(self.Info.nAntenna, nUBL)), dtype=np.float32)
+        assert(self.rawCalpar.shape == (self.nTime,self.nFrequency, self.calpar_size(self.Info.nAntenna, nUBL)))
         if nthread is None: nthread = min(mp.cpu_count() - 1, self.nFrequency)
         if nthread >= 2: return self._redcal_multithread(data, additivein, 0, nthread, verbose=verbose)
         return _O.redcal(data, self.rawCalpar, self.Info,
