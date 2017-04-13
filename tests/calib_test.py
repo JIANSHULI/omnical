@@ -58,7 +58,25 @@ class TestRedundantInfo(unittest.TestCase):
             ubls[self.info.bltoubl[n]] = n
         for u in xrange(len(self.info.ublcount)):
             self.assertTrue(ubls.has_key(u))
-   
+    def test_order_data(self):
+        antpos = np.array([[0.,0,0],[1,0,0],[2,0,0],[3,0,0]])
+        reds = [[(0,1),(1,2),(2,3)],[(0,2),(1,3)]]
+        i = Oc.RedundantInfo()
+        i.init_from_reds(reds,antpos)
+        dd = {
+            (0,1):np.array([[0,1j]]),
+            (1,2):np.array([[0,1j]]),
+            (2,3):np.array([[0,1j]]),
+            (2,0):np.array([[0,1j]]),
+            (1,3):np.array([[0,1j]]),
+        }
+        d = i.order_data(dd)
+        self.assertTrue(np.all(d[...,0] == np.array([[0,1j]])))
+        self.assertTrue(np.all(d[...,1] == np.array([[0,1j]])))
+        self.assertTrue(np.all(d[...,2] == np.array([[0,1j]])))
+        self.assertTrue(np.all(d[...,3] == np.array([[0,1j]]).conj()))
+        self.assertTrue(np.all(d[...,4] == np.array([[0,1j]])))
+
 
 class TestMethods(unittest.TestCase):
     def setUp(self):

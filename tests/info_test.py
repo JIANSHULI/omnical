@@ -58,24 +58,24 @@ class TestRedInfo(unittest.TestCase):
         i = Oi.RedundantInfoLegacy()
         i.fromfile_txt(redinfo_psa32)
         self.assertEqual(i.bl_order()[:5], [(0,4),(1,4),(2,4),(3,4),(0,5)])
-    def test_order_data(self):
-        antpos = np.array([[0.,0,0],[1,0,0],[2,0,0],[3,0,0]])
-        reds = [[(0,1),(1,2),(2,3)],[(0,2),(1,3)]]
-        i = Oi.RedundantInfo()
-        i.init_from_reds(reds,antpos)
-        dd = {
-            (0,1):np.array([[0,1j]]),
-            (1,2):np.array([[0,1j]]),
-            (2,3):np.array([[0,1j]]),
-            (2,0):np.array([[0,1j]]),
-            (1,3):np.array([[0,1j]]),
-        }
-        d = i.order_data(dd)
-        self.assertTrue(np.all(d[...,0] == np.array([[0,1j]])))
-        self.assertTrue(np.all(d[...,1] == np.array([[0,1j]])))
-        self.assertTrue(np.all(d[...,2] == np.array([[0,1j]])))
-        self.assertTrue(np.all(d[...,3] == np.array([[0,1j]]).conj()))
-        self.assertTrue(np.all(d[...,4] == np.array([[0,1j]])))
+#    def test_order_data(self):
+#        antpos = np.array([[0.,0,0],[1,0,0],[2,0,0],[3,0,0]])
+#        reds = [[(0,1),(1,2),(2,3)],[(0,2),(1,3)]]
+#        i = Oi.RedundantInfo()
+#        i.init_from_reds(reds,antpos)
+#        dd = {
+#            (0,1):np.array([[0,1j]]),
+#            (1,2):np.array([[0,1j]]),
+#            (2,3):np.array([[0,1j]]),
+#            (2,0):np.array([[0,1j]]),
+#            (1,3):np.array([[0,1j]]),
+#        }
+#        d = i.order_data(dd)
+#        self.assertTrue(np.all(d[...,0] == np.array([[0,1j]])))
+#        self.assertTrue(np.all(d[...,1] == np.array([[0,1j]])))
+#        self.assertTrue(np.all(d[...,2] == np.array([[0,1j]])))
+#        self.assertTrue(np.all(d[...,3] == np.array([[0,1j]]).conj()))
+#        self.assertTrue(np.all(d[...,4] == np.array([[0,1j]])))
     def test_get_reds(self):
         antpos = np.array([[0.,0,0],[1,0,0],[2,0,0],[3,0,0]])
         reds = [[(0,1),(1,2),(2,3)],[(0,2),(1,3)]]
