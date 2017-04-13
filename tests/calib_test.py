@@ -310,14 +310,12 @@ class TestRedCal(unittest.TestCase):
                 data = data.reshape((1,1,len(data)))
                 dd = _info.make_dd(data)
                 np.savez('calib_test_data_%02d.npz' % index, bls=np.array(dd.keys()), vis=np.array(dd.values()))
-            #info = Oc.RedundantInfo()
-            #info.init_from_reds(calibrator.Info.get_reds(), calibrator.Info.get_antpos())
             info = calibrator.Info
             npz = np.load(testdata % index)
             bls = [tuple(bl) for bl in npz['bls']]
             dd = dict(zip(bls, npz['vis']))
             data = np.array([dd[bl] if dd.has_key(bl) else dd[bl[::-1]].conj() for bl in info.bl_order()]).transpose((1,2,0))
-            #data = info.order_data(dd) # just needed Oc.RedundantInfo for orderdata
+            #data = info.order_data(dd) # order_data not native to info.RedundantInfo.
             ####do calibration################
             calibrator.removeDegeneracy = True
             calibrator.removeAdditive = False
