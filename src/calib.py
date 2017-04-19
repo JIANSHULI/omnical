@@ -172,7 +172,7 @@ class RedundantInfo(info.RedundantInfo):
 #     return meta, gains, vis
 
 def redcal(data, info, xtalk=None, gains=None, vis=None,
-        removedegen=False, uselogcal=False, uselincal=False, maxiter=50, conv=1e-3, stepsize=.3, computeUBLFit=True, trust_period=1, **kwargs):
+        removedegen=False, uselogcal=False, uselincal=False, maxiter=50, conv=1e-3, stepsize=.3, trust_period=1, **kwargs):
     '''Perform redundant calibration, parsing results into meta, gains, and vis dicts which are returned.  This
     function wraps _omnical.redcal to abstract away internal data ordering.  'data' is a dict of measured visibilities,
     indexed by baseline.  Initial guesses for xtalk, antenna gains,
@@ -185,7 +185,7 @@ def redcal(data, info, xtalk=None, gains=None, vis=None,
     res = _O.redcal(data, calpar, info, xtalk,
         removedegen=int(removedegen), uselogcal=int(uselogcal), uselincal=int(uselincal),
         maxiter=int(maxiter), conv=float(conv), stepsize=float(stepsize),
-        computeUBLFit=int(computeUBLFit), trust_period=int(trust_period))
+        computeUBLFit=int(vis is None), trust_period=int(trust_period))
     meta, gains, vis = info.unpack_calpar(calpar, res=res, **kwargs)
     return meta, gains, vis
 
