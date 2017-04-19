@@ -131,7 +131,7 @@ class TestMethods(unittest.TestCase):
             npz = np.load(testdata % index)
             bls = [tuple(bl) for bl in npz['bls']]
             dd = dict(zip(bls, npz['vis']))
-            m,g,v = Oc.redcal(dd, info, removedegen=True,maxiter=50,stepsize=.2,computeUBLFit=True,conv=1e-5,uselogcal=True)
+            m,g,v = Oc.redcal(dd, info, removedegen=True,maxiter=50,stepsize=.2,conv=1e-5,uselogcal=True)
             calparpath = os.path.dirname(os.path.realpath(__file__)) + '/testinfo/test'+str(index+1)+'_calpar.txt'
             with open(calparpath) as f:
                 rawinfo = [[float(x) for x in line.split()] for line in f]
