@@ -129,53 +129,5 @@ class TestRedInfo(unittest.TestCase):
         self.assertTrue(i1.get_reds() == i2.get_reds())
 
 
-class TestFCRedInfo(TestRedInfo):
-    def test_init_from_reds(self):
-        antpos = np.array([[0.,0,0],[1,0,0],[2,0,0],[3,0,0]])
-        reds = [[(0,1),(1,2),(2,3)],[(0,2),(1,3)]]
-        blpairs = [((0,1),(1,2)),((0,1),(2,3)),((1,2),(2,3)),((0,2),(1,3))]
-        A = np.array([[1, -2, 1, 0], [1,-1,-1,1], [0,1,-2,1], [1,-1,-1,1]])
-        i = Oi.FirstCalRedundantInfo()
-        i.init_from_reds(reds,antpos)
-        self.assertTrue(np.all(i.subsetant == np.arange(4, dtype=np.int32)))
-        self.assertEqual(i.reds,reds)
-        self.assertEqual(i.bl_pairs,blpairs)
-        self.assertTrue(i.blperant[0] == 2)
-        self.assertTrue(i.blperant[1] == 3)
-        self.assertTrue(i.blperant[2] == 3)
-        self.assertTrue(i.blperant[3] == 2)
-        self.assertTrue(np.all(i.A == A))
-    def test_bl_index(self):
-        reds = [[(0,1),(1,2),(2,3)],[(0,2),(1,3)]]
-        antpos = np.array([[0.,0,0],[1,0,0],[2,0,0],[3,0,0]])
-        i = Oi.FirstCalRedundantInfo()
-        i.init_from_reds(reds,antpos)
-        bls_order = [bl for ublgp in reds for bl in ublgp]
-        for k,b in enumerate(bls_order):
-            self.assertEqual(i.bl_index(b),k)
-    def test_blpair_index(self):
-        antpos = np.array([[0.,0,0],[1,0,0],[2,0,0],[3,0,0]])
-        reds = [[(0,1),(1,2),(2,3)],[(0,2),(1,3)]]
-        blpairs = [((0,1),(1,2)),((0,1),(2,3)),((1,2),(2,3)),((0,2),(1,3))]
-        i = Oi.FirstCalRedundantInfo()
-        i.init_from_reds(reds,antpos)
-        for k,bp in enumerate(blpairs):
-            self.assertEqual(i.blpair_index(bp), k)
-    def test_blpair2antindex(self):
-        antpos = np.array([[0.,0,0],[1,0,0],[2,0,0],[3,0,0]])
-        reds = [[(0,1),(1,2),(2,3)],[(0,2),(1,3)]]
-        blpairs = [((0,1),(1,2)),((0,1),(2,3)),((1,2),(2,3)),((0,2),(1,3))]
-        i = Oi.FirstCalRedundantInfo()
-        i.init_from_reds(reds,antpos)
-        for bp in blpairs:
-            self.assertTrue(np.all(i.blpair2antind(bp) == map(i.ant_index,np.array(bp).flatten())))
-         
-        
-             
-        
-
-
-    
-
 if __name__ == '__main__':
     unittest.main()
