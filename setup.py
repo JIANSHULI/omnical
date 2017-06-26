@@ -22,7 +22,7 @@ import os, glob, numpy
 #''',
        #ext_modules = [module])
 
-__version__ = '4.0.4'
+__version__ = '5.0.2'
 
 def indir(dir, files): return [dir+f for f in files]
 def globdir(dir, files):
@@ -35,7 +35,7 @@ setup(name = 'omnical',
     description = __doc__,
     long_description = __doc__,
     license = 'GPL',
-    author = 'Jeff Zheng, Eric Yang, Aaron Parsons, Shana Tribiano, Adrian Liu',
+    author = 'Jeff Zheng, Eric Yang, Aaron Parsons, Shana Tribiano, Adrian Liu, Zaki Ali',
     author_email = '',
     url = '',
     package_dir = {'omnical':'src'},

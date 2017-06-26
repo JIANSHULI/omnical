@@ -644,19 +644,19 @@ PyTypeObject RedInfoType = {
 |_|  |_|\___/ \__,_|\__,_|_|\___| |_| |_| |_|\___|\__|_| |_|\___/ \__,_|___/ */
 
 PyObject *redcal_wrap(PyObject *self, PyObject *args, PyObject *kwds) {//in place version
-    int uselogcal = 1, removedegen = 1, maxiter = 10, dummy = 0, computeUBLFit = 1, trust_period = 1;
+    int uselogcal = 1, uselincal = 1, removedegen = 1, maxiter = 10, dummy = 0, computeUBLFit = 1, trust_period = 1;
     float stepsize=.3, conv=.01;
     npy_intp dims[3] = {0, 0, 0}; // time, fq, bl
     npy_intp nint, nfreq, nbls;
     RedInfoObject *redinfo;
     PyArrayObject *data, *additivein, *calpar, *additiveout = NULL; // input arrays
-    static char *kwlist[] = {"data", "calpar", "info", "additivein", "additiveout", "uselogcal", "removedegen", "maxiter", "stepsize", "conv", "computeUBLFit", "trust_period", "dummy"};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds,"O!O!O!O!|O!iiiffiii", kwlist,
+    static char *kwlist[] = {"data", "calpar", "info", "additivein", "additiveout", "uselogcal", "uselincal", "removedegen", "maxiter", "stepsize", "conv", "computeUBLFit", "trust_period", "dummy"};
+    if (!PyArg_ParseTupleAndKeywords(args, kwds,"O!O!O!O!|O!iiiiffiii", kwlist,
             &PyArray_Type, &data, &PyArray_Type, &calpar, &RedInfoType, &redinfo, &PyArray_Type, &additivein, &PyArray_Type, &additiveout,
-            &uselogcal, &removedegen, &maxiter, &stepsize, &conv, &computeUBLFit, &trust_period, &dummy))
+            &uselogcal, &uselincal, &removedegen, &maxiter, &stepsize, &conv, &computeUBLFit, &trust_period, &dummy))
         return NULL;
     // check shape and type of data
-    if (PyArray_NDIM(data) != 3 || PyArray_TYPE(data) != PyArray_CFLOAT) {
+    if (PyArray_NDIM(data) != 3 || PyArray_TYPE(data) != PyArray_CFLOAT) { // XXX make this work for complex128
         PyErr_Format(PyExc_ValueError, "data must be a (nint,nfreq,nbls) array of complex floats");
         return NULL;
     }
@@ -703,11 +703,20 @@ PyObject *redcal_wrap(PyObject *self, PyObject *args, PyObject *kwds) {//in plac
                 additivein_v[b][0] = ((float *) PyArray_GETPTR3(additivein,t,f,b))[0];
                 additivein_v[b][1] = ((float *) PyArray_GETPTR3(additivein,t,f,b))[1];
             }
+            // copy from calpar to calpar_v
+            for (unsigned int n = 0; n < calpar_v.size(); n ++){
+                calpar_v[n] = ((float *) PyArray_GETPTR2(calpar, t, f))[n];
+            }
 
+
+            //use logcal
             if (uselogcal) {
-                for (unsigned int n = 0; n < calpar_v.size(); n ++){
-                    calpar_v[n] = ((float *) PyArray_GETPTR2(calpar, t, f))[n];
-                }
+//                if (t==0 && f==0) {
+//                    cout << "Use Logcal" << endl;
+//                }
+                //Remove degen on firstcal solutions before we logcal.
+                //removeDegen(&calpar_v, &(redinfo->info), &module);
+
                 logcaladd(
                     &data_v, //(vector<vector<float> > *) PyArray_GETPTR3(data,t,f,0),
                     &additivein_v, //(vector<vector<float> > *) PyArray_GETPTR3(additivein,t,f,0),
@@ -718,6 +727,13 @@ PyObject *redcal_wrap(PyObject *self, PyObject *args, PyObject *kwds) {//in plac
                     1,
                     &module
                 );
+
+                
+//                cout << t;
+//                cout << f << endl;
+//                for (int a = 0 ; a < redinfo->info.nAntenna; a ++){
+//                    cout << calpar_v[3 + redinfo->info.nAntenna + a] << endl; 
+//                }
                 //lincal(
                     //&data_v, //(vector<vector<float> > *) PyArray_GETPTR3(data,t,f,0),
                     //&additivein_v, //(vector<vector<float> > *) PyArray_GETPTR3(additivein,t,f,0),
@@ -730,19 +746,24 @@ PyObject *redcal_wrap(PyObject *self, PyObject *args, PyObject *kwds) {//in plac
                     //maxiter,
                     //stepsize
                 //);
-            } else {
-                if (t % trust_period == 0 or (((float *) PyArray_GETPTR2(calpar, t, f))[1] > 0 and ((float *) PyArray_GETPTR2(calpar, t, f))[1] <= ((float *) PyArray_GETPTR2(calpar, t - 1, f))[2])){//whether to start from logcal calpar or the result of revious lincal result
-                    for (unsigned int n = 0; n < calpar_v.size(); n ++){
-                        calpar_v[n] = ((float *) PyArray_GETPTR2(calpar, t, f))[n];
-                    }
-                } else {
-                    calpar_v[0] = ((float *) PyArray_GETPTR2(calpar, t, f))[0];
-                    calpar_v[1] = ((float *) PyArray_GETPTR2(calpar, t, f))[1];
-                    calpar_v[2] = ((float *) PyArray_GETPTR2(calpar, t, f))[2];
-                    for (unsigned int n = 3; n < calpar_v.size(); n ++){
-                        calpar_v[n] = ((float *) PyArray_GETPTR2(calpar, t - 1, f))[n];
-                    }
-                }
+            } 
+            //use lincal 
+            if (uselincal) {
+//                if (t==0 && f==0) {
+//                    cout << "Use Lincal" << endl;
+//                } 
+//                if (t % trust_period == 0 or (((float *) PyArray_GETPTR2(calpar, t, f))[1] > 0 and ((float *) PyArray_GETPTR2(calpar, t, f))[1] <= ((float *) PyArray_GETPTR2(calpar, t - 1, f))[2])){//whether to start from logcal calpar or the result of revious lincal result
+//                    for (unsigned int n = 0; n < calpar_v.size(); n ++){
+//                        calpar_v[n] = ((float *) PyArray_GETPTR2(calpar, t, f))[n];
+//                    }
+//                } else {
+//                    calpar_v[0] = ((float *) PyArray_GETPTR2(calpar, t, f))[0];
+//                    calpar_v[1] = ((float *) PyArray_GETPTR2(calpar, t, f))[1];
+//                    calpar_v[2] = ((float *) PyArray_GETPTR2(calpar, t, f))[2];
+//                    for (unsigned int n = 3; n < calpar_v.size(); n ++){
+//                        calpar_v[n] = ((float *) PyArray_GETPTR2(calpar, t - 1, f))[n];
+//                    }
+//                }
                 lincal(
                     &data_v, //(vector<vector<float> > *) PyArray_GETPTR3(data,t,f,0),
                     &additivein_v, //(vector<vector<float> > *) PyArray_GETPTR3(additivein,t,f,0),
@@ -755,11 +776,19 @@ PyObject *redcal_wrap(PyObject *self, PyObject *args, PyObject *kwds) {//in plac
                     maxiter,
                     stepsize
                 );
-            }
+            } 
+            //remove degeneracies 
+            if (removedegen) {
+//                if (t==0 && f==0) {
+//                    cout << "Remove Degeneracies" << endl;
+//                }
             //if (removedegen) removeDegen((vector<float> *) PyArray_GETPTR3(calpar,t,f,0), &(redinfo->info), &module);
-            for (int i = 0; i < removedegen; i++){
-                removeDegen(&calpar_v, &(redinfo->info), &module);
+            //if (removedegen) removeDegen(&calpar_v, &(redinfo->info), &module);
+                for (int i = 0; i < removedegen; i++){
+                    removeDegen(&calpar_v, &(redinfo->info), &module);
+                    }
             }
+
             // copy to output arrays
             for (int b = 0; b < nbls; b++) {
                 ((float *) PyArray_GETPTR3(additiveout,t,f,b))[0] = additiveout_v[b][0];
@@ -773,6 +802,7 @@ PyObject *redcal_wrap(PyObject *self, PyObject *args, PyObject *kwds) {//in plac
 
     return PyArray_Return(additiveout);
 }
+
 
 PyObject *gaincal_wrap(PyObject *self, PyObject *args, PyObject *kwds) {//in place version like redcal2
     int maxiter = 10, dummy = 0;
